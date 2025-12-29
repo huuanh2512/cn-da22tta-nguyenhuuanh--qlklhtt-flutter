@@ -44,3 +44,7 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 server/src/firebase-service-account.json
+
+# Environment config files
+.env
+khu_lien_hop_tt/server/.env
