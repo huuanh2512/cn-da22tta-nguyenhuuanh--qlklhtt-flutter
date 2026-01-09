@@ -11,6 +11,7 @@ import '../widgets/success_dialog.dart';
 import '../screens/auth/login_page.dart';
 import 'staff_notifications_page.dart';
 
+// Trang hồ sơ nhân viên: xem thông tin, cập nhật profile, đổi mật khẩu, đăng xuất
 class StaffProfilePage extends StatefulWidget {
   const StaffProfilePage({super.key, this.embedded = false});
 

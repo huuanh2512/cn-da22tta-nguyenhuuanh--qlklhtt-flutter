@@ -1,5 +1,6 @@
 import '../utils/json_utils.dart';
 
+/// Model booking phía client, kèm snapshot giá và tên sân/cơ sở phục vụ hiển thị.
 class Booking {
   final String id;
   final String customerId;
@@ -38,6 +39,7 @@ class Booking {
   });
 
   factory Booking.fromJson(Map<String, dynamic> json) {
+    // Helper chuyển đổi số/chuỗi/date để chống crash khi backend trả kiểu lẫn lộn
     double? toDouble(dynamic v) {
       if (v is num) return v.toDouble();
       if (v is String) return double.tryParse(v);

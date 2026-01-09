@@ -5,6 +5,7 @@ import '../models/user_invoice.dart';
 import '../models/user_payment.dart';
 import 'api_service.dart';
 
+/// Service hoá đơn/thanh toán của khách: lấy invoice, payment, thực hiện trả tiền.
 class UserBillingService {
   final Dio _dio;
 
@@ -45,6 +46,7 @@ class UserBillingService {
 
   Future<List<UserInvoice>> fetchInvoices() async {
     final res = await _dio.get('/api/user/invoices');
+    // Lấy toàn bộ hoá đơn của user hiện tại
     final data = res.data;
     if (data is! List) {
       throw Exception('Phản hồi hoá đơn không hợp lệ');
@@ -58,6 +60,7 @@ class UserBillingService {
   Future<List<UserPayment>> fetchPayments({String? invoiceId}) async {
     final res = await _dio.get(
       '/api/user/payments',
+      // Lấy lịch sử thanh toán, có thể lọc theo invoiceId
       queryParameters: {if (invoiceId != null) 'invoiceId': invoiceId},
     );
     final data = res.data;
@@ -72,6 +75,7 @@ class UserBillingService {
 
   Future<PayInvoiceResult> payInvoice(
     String invoiceId, {
+    // Gửi request thanh toán; payload có thể rỗng để dùng tổng outstanding
     double? amount,
     String? method,
     String? provider,

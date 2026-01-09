@@ -1,5 +1,6 @@
 import '../utils/json_utils.dart';
 
+// Parse thời gian cho các trường profile (hỗ trợ nhiều định dạng)
 DateTime? _parseDate(dynamic value) {
   if (value == null) return null;
   if (value is DateTime) return value;
@@ -23,6 +24,7 @@ DateTime? _parseDate(dynamic value) {
   return DateTime.tryParse(text);
 }
 
+// Địa chỉ cơ sở (dùng trong hồ sơ nhân viên)
 class StaffProfileFacilityAddress {
   final String? line1;
   final String? ward;
@@ -62,6 +64,7 @@ class StaffProfileFacilityAddress {
   }
 }
 
+// Giờ mở cửa rút gọn
 class StaffProfileOpeningHours {
   final String? open;
   final String? close;
@@ -81,6 +84,7 @@ class StaffProfileOpeningHours {
   }
 }
 
+// Thông tin cơ sở gắn với nhân viên
 class StaffProfileFacilitySummary {
   final String? id;
   final String? name;
@@ -116,6 +120,7 @@ class StaffProfileFacilitySummary {
   }
 }
 
+// Hồ sơ nhân viên: thông tin cá nhân + cơ sở phụ trách
 class StaffProfile {
   final String? id;
   final String? name;

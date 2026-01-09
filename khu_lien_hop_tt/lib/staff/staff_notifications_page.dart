@@ -25,6 +25,7 @@ extension _NotificationFilterX on _NotificationFilter {
   };
 }
 
+// Trang thông báo cho nhân viên: lọc/tìm kiếm, đánh dấu đã đọc và điều hướng tới booking liên quan
 class StaffNotificationsPage extends StatefulWidget {
   const StaffNotificationsPage({
     super.key,
@@ -105,6 +106,7 @@ class _StaffNotificationsPageState extends State<StaffNotificationsPage>
     }
   }
 
+  // Bổ sung thông tin cho thông báo tự huỷ sân để hiển thị dễ hiểu
   StaffNotification _decorateNotification(StaffNotification notification) {
     final metadata = notification.metadata;
     if (metadata[_autoCancelMarkerKey] == true) {

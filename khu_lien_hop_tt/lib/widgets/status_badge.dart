@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 class StatusBadge extends StatelessWidget {
+  // Badge trạng thái dạng chip bo tròn cho active/inactive
   final String text;
   final Color color;
   const StatusBadge.active({super.key})

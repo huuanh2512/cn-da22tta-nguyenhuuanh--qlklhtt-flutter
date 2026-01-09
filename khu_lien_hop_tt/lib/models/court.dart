@@ -1,5 +1,6 @@
 import '../utils/json_utils.dart';
 
+// Mô tả sân tại cơ sở, gắn với môn và trạng thái
 class Court {
   final String id;
   final String name;

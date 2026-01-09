@@ -1,5 +1,6 @@
 import '../utils/json_utils.dart';
 
+// Parse nhiều dạng ngày (ISO, timestamp, mongo $date)
 DateTime? _parseDate(dynamic value) {
   if (value == null) return null;
   if (value is DateTime) return value;
@@ -14,6 +15,7 @@ DateTime? _parseDate(dynamic value) {
   return null;
 }
 
+// Phiên bảo trì sân/cơ sở với mốc thời gian và lý do
 class Maintenance {
   final String id;
   final String facilityId;

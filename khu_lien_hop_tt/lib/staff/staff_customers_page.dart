@@ -8,6 +8,7 @@ import 'package:khu_lien_hop_tt/widgets/success_dialog.dart';
 import 'package:khu_lien_hop_tt/widgets/neu_button.dart';
 import 'package:khu_lien_hop_tt/widgets/neo_loading.dart';
 
+// Trang nhân viên xem danh sách khách đã từng đặt sân
 class StaffCustomersPage extends StatefulWidget {
   const StaffCustomersPage({super.key, this.embedded = false});
 
@@ -29,6 +30,7 @@ class _StaffCustomersPageState extends State<StaffCustomersPage> {
     _loadCustomers();
   }
 
+  // Tải danh sách khách (tối đa 100) để hiển thị thẻ
   Future<void> _loadCustomers({bool showSpinner = true}) async {
     if (showSpinner) {
       setState(() {

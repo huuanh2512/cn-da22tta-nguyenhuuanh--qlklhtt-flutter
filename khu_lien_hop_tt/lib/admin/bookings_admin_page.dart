@@ -28,6 +28,7 @@ const List<String> bookingStatusOptions = [
 String bookingStatusLabel(String status) =>
     bookingStatusLabels[status] ?? status;
 
+// Trang quản trị đặt sân: cho phép admin lọc, tạo, sửa, xoá booking và xem giá/sân/người dùng liên quan
 class BookingsAdminPage extends StatefulWidget {
   const BookingsAdminPage({super.key});
 
@@ -63,6 +64,7 @@ class _BookingsAdminPageState extends State<BookingsAdminPage> {
     _bootstrap();
   }
 
+  // Tải dữ liệu nền (cơ sở, môn, người dùng) rồi mới lấy danh sách booking
   Future<void> _bootstrap() async {
     setState(() {
       _bootstrapping = true;
@@ -93,6 +95,7 @@ class _BookingsAdminPageState extends State<BookingsAdminPage> {
     _userById = {for (final u in _users) u.id: u};
   }
 
+  // Lọc và tải danh sách booking theo bộ lọc đang chọn
   Future<void> _loadBookings() async {
     setState(() {
       _loading = true;
@@ -123,6 +126,7 @@ class _BookingsAdminPageState extends State<BookingsAdminPage> {
     }
   }
 
+  // Bảo đảm đã cache danh sách sân của cơ sở để render nhanh
   Future<List<Court>> _ensureCourtsLoaded(String facilityId) async {
     if (_courtsByFacility.containsKey(facilityId)) {
       return _courtsByFacility[facilityId]!;
@@ -193,6 +197,7 @@ class _BookingsAdminPageState extends State<BookingsAdminPage> {
     return '$formatted $currency';
   }
 
+  // Mở form, báo giá và tạo mới booking thay mặt khách
   Future<void> _createBooking() async {
     final messenger = ScaffoldMessenger.of(context);
     final result = await showDialog<_BookingFormResult>(
@@ -240,6 +245,7 @@ class _BookingsAdminPageState extends State<BookingsAdminPage> {
     }
   }
 
+  // Chỉnh sửa booking: cập nhật thông tin và trạng thái
   Future<void> _editBooking(Booking booking) async {
     final messenger = ScaffoldMessenger.of(context);
     final result = await showDialog<_BookingFormResult>(
@@ -280,6 +286,7 @@ class _BookingsAdminPageState extends State<BookingsAdminPage> {
     }
   }
 
+  // Xoá mềm (mark deleted) một booking
   Future<void> _deleteBooking(Booking booking) async {
     final messenger = ScaffoldMessenger.of(context);
     final ok = await showDialog<bool>(

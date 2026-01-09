@@ -6,6 +6,7 @@ import 'package:khu_lien_hop_tt/models/sport.dart';
 import 'package:khu_lien_hop_tt/services/api_service.dart';
 import 'package:khu_lien_hop_tt/widgets/sports_gradient_background.dart';
 
+// Trang quản trị bảng giá: lọc theo cơ sở/môn/sân và upsert profile giá cơ bản
 class PriceProfilesPage extends StatefulWidget {
   const PriceProfilesPage({super.key});
 
@@ -164,6 +165,7 @@ class _PriceProfilesPageState extends State<PriceProfilesPage> {
     _bootstrap();
   }
 
+  // Tải cơ sở/môn và sân tương ứng, sau đó lấy danh sách bảng giá hiện có
   Future<void> _bootstrap() async {
     setState(() {
       _loading = true;
@@ -223,6 +225,7 @@ class _PriceProfilesPageState extends State<PriceProfilesPage> {
     }
   }
 
+  // Mở dialog để tạo mới hoặc cập nhật bảng giá (upsert theo khóa facility/sport/court)
   Future<void> _openUpsert([PriceProfile? current]) async {
     final result = await showDialog<_ProfileFormResult>(
       context: context,

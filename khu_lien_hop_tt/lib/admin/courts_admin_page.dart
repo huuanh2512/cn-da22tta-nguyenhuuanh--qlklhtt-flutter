@@ -5,6 +5,7 @@ import 'package:khu_lien_hop_tt/models/sport.dart';
 import 'package:khu_lien_hop_tt/services/api_service.dart';
 import 'package:khu_lien_hop_tt/widgets/sports_gradient_background.dart';
 
+// Trang quản trị sân: quản lý danh sách sân theo cơ sở/môn, cho phép tạo, sửa, đổi trạng thái
 class CourtsAdminPage extends StatefulWidget {
   const CourtsAdminPage({super.key});
 
@@ -30,6 +31,7 @@ class _CourtsAdminPageState extends State<CourtsAdminPage> {
     _bootstrap();
   }
 
+  // Tải cơ sở và môn rồi mặc định chọn cơ sở đầu tiên để load sân
   Future<void> _bootstrap() async {
     setState(() {
       _loading = true;
@@ -133,6 +135,7 @@ class _CourtsAdminPageState extends State<CourtsAdminPage> {
     }
   }
 
+  // Chỉ cập nhật trường trạng thái để chuyển sân sang available/maintenance/inactive
   Future<void> _changeStatus(Court c, String status) async {
     setState(() => _loading = true);
     try {

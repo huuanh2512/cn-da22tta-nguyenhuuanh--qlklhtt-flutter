@@ -1,5 +1,6 @@
 import '../utils/json_utils.dart';
 
+// Bảng giá áp dụng cho cơ sở/môn/sân với thuế và trạng thái
 class PriceProfile {
   final String id;
   final String? name;

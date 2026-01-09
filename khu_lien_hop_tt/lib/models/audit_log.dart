@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+// Mô tả actor thực hiện action trong audit log
 class AuditActor {
   final String? id;
   final String? role;
@@ -14,6 +15,7 @@ class AuditActor {
   }
 }
 
+// Bản ghi audit: ghi lại action/resource, payload, metadata và actor
 class AuditLog {
   final String id;
   final String action;

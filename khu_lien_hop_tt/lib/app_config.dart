@@ -1,28 +1,25 @@
 import 'dart:io';
 
-/// Centralized app configuration.
+/// Cấu hình tập trung cho ứng dụng.
 class AppConfig {
-  /// API base URL resolution order:
-  /// - API_BASE from --dart-define if provided
-  /// - Default server address (update this if your server is hosted elsewhere)
+  /// Thứ tự xác định API base URL:
+  /// - Ưu tiên API_BASE truyền qua --dart-define
+  /// - Nếu không có, dùng địa chỉ mặc định (cập nhật khi server đặt nơi khác)
   ///
-  /// For local development:
-  /// - Android emulator: use 'http://10.0.2.2:3000'
-  /// - iOS simulator/others: use 'http://localhost:3000'
+  /// Dev nội bộ:
+  /// - Android emulator: 'http://10.0.2.2:3000'
+  /// - iOS simulator/khác: 'http://localhost:3000'
   ///
-  /// For deployed server, replace with your actual server URL:
-  /// Example: 'https://your-server.com' or 'http://your-ip:3000'
-  ///
-  /// To override at runtime, use: flutter run --dart-define=API_BASE=http://your-server:3000
+  /// Khi triển khai, thay bằng URL server thật (vd: https://your-server.com)
+  /// Có thể ghi đè lúc chạy: flutter run --dart-define=API_BASE=http://your-server:3000
   static final String apiBase = _resolveApiBase();
 
   static String _resolveApiBase() {
     const env = String.fromEnvironment('API_BASE');
     if (env.isNotEmpty) return env;
 
-    // Update this with your actual server address
-    // If running server locally on your machine and testing on a physical device,
-    // use your computer's local network IP (e.g., 'http://192.168.1.x:3000')
+    // Cập nhật thành địa chỉ server thật nếu khác mặc định Render
+    // Nếu test trên thiết bị thật với server local, dùng IP LAN của máy (vd 192.168.x.x)
     const defaultServer = 'https://khu-lien-hop-tt.onrender.com';
 
     try {
@@ -35,7 +32,7 @@ class AppConfig {
         }
       }
     } catch (_) {
-      // Platform may not be available in some contexts; ignore
+      // Platform có thể không sẵn ở vài môi trường (vd build web); bỏ qua
     }
     return defaultServer;
   }

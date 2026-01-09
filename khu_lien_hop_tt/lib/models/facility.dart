@@ -1,5 +1,6 @@
 import '../utils/json_utils.dart';
 
+// Chuyển mọi kiểu mảng/chuỗi sang danh sách string đã trim
 List<String> _stringList(dynamic value) {
   if (value == null) return const [];
   if (value is List) {
@@ -18,12 +19,14 @@ List<String> _stringList(dynamic value) {
   return const [];
 }
 
+// Trả về map hợp lệ nếu đúng kiểu
 Map<String, dynamic>? _mapOrNull(dynamic value) {
   if (value == null) return null;
   if (value is Map<String, dynamic>) return value;
   return null;
 }
 
+// Địa chỉ cơ sở và toạ độ nếu có
 class FacilityAddress {
   final String? line1;
   final String? ward;
@@ -81,6 +84,7 @@ class FacilityAddress {
   };
 }
 
+// Cơ sở thể thao: thông tin liên hệ, tiện ích, giờ mở cửa, trạng thái
 class Facility {
   final String id;
   final String name;

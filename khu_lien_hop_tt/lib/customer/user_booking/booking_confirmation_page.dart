@@ -10,6 +10,7 @@ import 'package:khu_lien_hop_tt/services/user_booking_service.dart';
 import 'package:khu_lien_hop_tt/widgets/success_dialog.dart';
 import 'package:khu_lien_hop_tt/widgets/neo_loading.dart';
 
+/// Bước cuối xác nhận đặt sân: hiển thị tóm tắt & báo giá, gửi createBooking.
 class BookingConfirmationPage extends StatefulWidget {
   final Sport sport;
   final Facility facility;
@@ -88,6 +89,7 @@ class _BookingConfirmationPageState extends State<BookingConfirmationPage>
   }
 
   Future<void> _confirmBooking() async {
+    // Kiểm tra user hợp lệ (ObjectId), rồi gọi API tạo booking với snapshot giá
     if (_submitting) return;
     var user = AuthService.instance.currentUser;
     if (user == null) {

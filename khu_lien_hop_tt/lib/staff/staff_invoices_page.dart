@@ -25,6 +25,7 @@ const Map<String, String> _paymentFilters = {
 
 enum _DateQuickFilter { all, today, last7Days, thisMonth, custom }
 
+// Trang nhân viên theo dõi hoá đơn: lọc trạng thái/thanh toán, xem tổng quan và thao tác thanh toán
 class StaffInvoicesPage extends StatefulWidget {
   const StaffInvoicesPage({
     super.key,
@@ -110,6 +111,7 @@ class _StaffInvoicesPageState extends State<StaffInvoicesPage> {
     }
   }
 
+  // Áp dụng quick filter (hôm nay/7 ngày/tháng này/toàn bộ) và optional reload
   void _applyQuickFilter(_DateQuickFilter filter, {bool triggerLoad = true}) {
     final now = DateTime.now();
     DateTime? from;

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 
+/// Tiện ích chuẩn hóa lỗi HTTP/Dio thành một model gọn cho UI xử lý.
 class ApiErrorDetails {
   const ApiErrorDetails({
     this.statusCode,
@@ -23,6 +24,7 @@ class ApiErrorDetails {
 }
 
 ApiErrorDetails parseApiError(Object error) {
+  // Ưu tiên dữ liệu đã chuẩn hoá, sau đó DioException, cuối cùng là chuỗi/Exception bất kỳ
   if (error is ApiErrorDetails) return error;
   if (error is DioException) {
     final response = error.response;

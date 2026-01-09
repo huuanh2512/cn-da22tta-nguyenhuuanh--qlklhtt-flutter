@@ -11,6 +11,7 @@ import 'package:khu_lien_hop_tt/widgets/neo_loading.dart';
 
 import 'package:khu_lien_hop_tt/customer/user_booking/booking_scheduler_page.dart';
 
+/// Bước chọn cơ sở/sân sau khi chọn môn, hiển thị sân khả dụng theo sport.
 class FacilityCourtSelectionPage extends StatefulWidget {
   final Sport sport;
   const FacilityCourtSelectionPage({super.key, required this.sport});
@@ -34,6 +35,7 @@ class _FacilityCourtSelectionPageState
   }
 
   Future<void> _loadFacilities() async {
+    // Lấy danh sách cơ sở + sân theo sport, xử lý lỗi/empty state
     setState(() {
       _loading = true;
       _error = null;
@@ -218,6 +220,7 @@ class _FacilityCourtSelectionPageState
   }
 
   Future<void> _openScheduler(Facility facility, Court court) async {
+    // Mở màn đặt lịch; nếu đặt thành công thì báo snack
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => BookingSchedulerPage(

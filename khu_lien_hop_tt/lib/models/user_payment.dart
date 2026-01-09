@@ -1,5 +1,6 @@
 import '../utils/json_utils.dart';
 
+// Giao dịch thanh toán của khách cho một hoá đơn
 class UserPayment {
   final String id;
   final String invoiceId;

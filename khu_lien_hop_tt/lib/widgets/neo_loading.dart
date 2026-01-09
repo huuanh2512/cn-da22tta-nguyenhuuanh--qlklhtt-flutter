@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:neubrutalism_ui/neubrutalism_ui.dart';
 
-/// Neo-brutalist loading card for fullscreen or section-level loading states.
+/// Thẻ loading phong cách neo-brutalism cho màn hình hoặc block đang tải.
 class NeoLoadingCard extends StatefulWidget {
   const NeoLoadingCard({
     super.key,
@@ -28,6 +28,7 @@ class NeoLoadingCard extends StatefulWidget {
 
 class _NeoLoadingCardState extends State<NeoLoadingCard>
     with SingleTickerProviderStateMixin {
+  // Bảng màu đổi theo nhãn để card tải có cảm giác sống động
   static const _palette = [
     Color(0xFFFFF4C7),
     Color(0xFFBBF1E2),

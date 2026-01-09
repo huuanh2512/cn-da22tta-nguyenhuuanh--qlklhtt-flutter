@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:khu_lien_hop_tt/models/audit_log.dart';
 import 'package:khu_lien_hop_tt/services/api_service.dart';
 
+// Trang xem lịch sử thao tác (audit log) kèm bộ lọc action/resource/actor
 class AuditLogsPage extends StatefulWidget {
   const AuditLogsPage({super.key});
 
@@ -76,6 +77,7 @@ class _AuditLogsPageState extends State<AuditLogsPage> {
     }
   }
 
+  // Hiển thị chi tiết log trong bottom sheet để xem payload/changes/metadata
   void _showDetails(AuditLog log) {
     showModalBottomSheet(
       context: context,

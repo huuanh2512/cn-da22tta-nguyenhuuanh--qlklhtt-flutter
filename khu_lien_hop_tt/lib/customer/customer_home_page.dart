@@ -24,6 +24,7 @@ import 'package:khu_lien_hop_tt/widgets/error_state_widget.dart';
 import 'package:khu_lien_hop_tt/widgets/neu_button.dart';
 import 'package:khu_lien_hop_tt/widgets/neo_loading.dart';
 
+/// Trang tổng quan khách hàng: booking sắp tới, thông báo, hoá đơn, match request.
 class CustomerHomePage extends StatefulWidget {
   const CustomerHomePage({super.key});
 
@@ -112,6 +113,7 @@ class _CustomerHomePageState extends State<CustomerHomePage> {
   }
 
   Future<void> _loadAll() async {
+    // Tải đồng thời booking sắp tới, thông báo, hoá đơn, match request
     final user = _auth.currentUser;
     if (user == null) {
       if (!mounted) return;
@@ -236,6 +238,7 @@ class _CustomerHomePageState extends State<CustomerHomePage> {
   }
 
   List<Booking> _prepareUpcomingBookings(List<Booking> bookings) {
+    // Lọc booking còn hiệu lực (pending/confirmed) và chưa kết thúc, giới hạn 3
     final now = DateTime.now().toLocal();
     const allowedStatuses = {'pending', 'confirmed'};
     final filtered = bookings.where((booking) {
@@ -250,6 +253,7 @@ class _CustomerHomePageState extends State<CustomerHomePage> {
   List<MatchRequest> _prepareRecentMatchRequests(
     List<MatchRequest> requests,
   ) {
+    // Lấy match request chưa hết hạn/đã hủy, sắp xếp theo thời gian tạo/gần nhất
     if (requests.isEmpty) return const [];
     final now = DateTime.now().toLocal();
     final filtered = requests.where((request) {
@@ -277,6 +281,7 @@ class _CustomerHomePageState extends State<CustomerHomePage> {
   }
 
   Future<List<_UserNotification>> _fetchUserNotifications({int limit = 3}) async {
+    // Gọi API notifications riêng (không dùng ApiService) để có limit tuỳ ý
     try {
       final response = await _userClient.get<dynamic>(
         '/api/user/notifications',

@@ -4,6 +4,7 @@ import 'package:khu_lien_hop_tt/models/sport.dart';
 import 'package:khu_lien_hop_tt/models/user.dart';
 import 'package:khu_lien_hop_tt/services/api_service.dart';
 
+// Trang quản trị người dùng: lọc theo vai trò/trạng thái, tìm kiếm và CRUD user
 class UsersPage extends StatefulWidget {
   const UsersPage({super.key});
 
@@ -66,6 +67,7 @@ class _UsersPageState extends State<UsersPage> {
     }
   }
 
+  // Tạo mới hoặc chỉnh sửa user; tái sử dụng dialog cho cả hai trường hợp
   Future<void> _createOrEdit({AppUser? current}) async {
     final result = await showDialog<_UserFormResult>(
       context: context,
@@ -140,6 +142,7 @@ class _UsersPageState extends State<UsersPage> {
     }
   }
 
+  // Đánh dấu xoá một user và reload danh sách
   Future<void> _delete(AppUser u) async {
     final ok = await showDialog<bool>(
       context: context,

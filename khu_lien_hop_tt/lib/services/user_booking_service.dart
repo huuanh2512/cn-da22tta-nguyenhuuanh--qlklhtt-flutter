@@ -13,6 +13,7 @@ class FacilityWithCourts {
   const FacilityWithCourts({required this.facility, required this.courts});
 }
 
+/// Service đặt sân dành cho khách: lấy môn/cơ sở/sân, kiểm tra trống, báo giá, tạo booking.
 class UserBookingService {
   final Dio _dio;
 
@@ -60,6 +61,7 @@ class UserBookingService {
   }
 
   Future<List<FacilityWithCourts>> fetchFacilitiesBySport(String sportId) async {
+    // Lấy danh sách cơ sở rồi truy vấn sân theo sportId; bỏ sân đã deleted
     final res = await _dio.get('/api/facilities');
     final facilitiesData = res.data;
     if (facilitiesData is! List) {
@@ -99,6 +101,7 @@ class UserBookingService {
     String currency = 'VND',
     String? userId,
   }) async {
+    // Gọi API báo giá, yêu cầu start/end UTC và snapshot pricing để giữ nguyên giá
     final payload = {
       'facilityId': facilityId,
       'sportId': sportId,
@@ -121,6 +124,7 @@ class UserBookingService {
     required DateTime start,
     required DateTime end,
   }) async {
+    // Kiểm tra sân trống trong khoảng thời gian, trả về boolean
     final res = await _dio.get(
       '/api/courts/$courtId/availability',
       queryParameters: {
@@ -146,6 +150,7 @@ class UserBookingService {
     required String currency,
     required Map<String, dynamic> pricingSnapshot,
   }) async {
+    // Tạo booking pending cùng snapshot giá để backend giữ đúng thời điểm báo giá
     final payload = {
       'customerId': customerId,
       'facilityId': facilityId,

@@ -19,6 +19,7 @@ import '../models/user_profile.dart';
 import '../models/staff_notification.dart';
 import '../models/user_invoice.dart';
 
+/// Client gọi REST backend, gom tất cả endpoint cho customer/staff/admin.
 class ApiService {
   ApiService({String? baseUrl})
     : baseUrl = baseUrl ?? _defaultBaseUrl,
@@ -78,6 +79,7 @@ class ApiService {
     }
   }
 
+  // Thực hiện request thô, luôn trả _Response (kể cả khi mã lỗi để tự xử lý)
   Future<_Response> _request(
     String method,
     Object path, {

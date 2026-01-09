@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+// Thông báo dành cho nhân viên, kèm metadata để điều hướng
 class StaffNotification {
   StaffNotification({
     required this.id,

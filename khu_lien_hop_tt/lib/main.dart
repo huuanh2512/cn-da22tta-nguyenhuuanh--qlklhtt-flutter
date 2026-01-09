@@ -18,6 +18,7 @@ import 'staff/staff_home_page.dart';
 import 'models/user.dart';
 
 void main() async {
+  // Khởi tạo Firebase + định dạng ngày tháng tiếng Việt trước khi render app
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   await initializeDateFormatting('vi');
@@ -36,6 +37,7 @@ class MyApp extends StatelessWidget {
       builder: (context, _) {
         final user = auth.currentUser;
         Widget home;
+        // Điều hướng màn hình đầu dựa trên trạng thái đăng nhập + role
         if (!auth.isLoggedIn || user == null) {
           home = const LoginPage();
         } else if (user.role == 'customer' && !auth.isCustomerEmailVerified) {
@@ -59,6 +61,7 @@ class MyApp extends StatelessWidget {
           theme: ThemeData(
             colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
           ),
+          // Mặc định nội địa hoá tiếng Việt, fallback tiếng Anh
           locale: const Locale('vi'),
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,

@@ -9,6 +9,7 @@ import '../models/staff_profile.dart';
 import '../models/user_profile.dart';
 import 'api_service.dart';
 
+/// Quản lý phiên đăng nhập (Firebase Auth + backend) và lưu trữ token cục bộ.
 class AuthService extends ChangeNotifier {
   static final AuthService instance = AuthService._internal();
   AuthService._internal() {

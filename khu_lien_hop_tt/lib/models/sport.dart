@@ -1,5 +1,6 @@
 import '../utils/json_utils.dart';
 
+// Mô tả môn thể thao, kèm mã code và quy mô đội
 class Sport {
   final String id;
   final String name;

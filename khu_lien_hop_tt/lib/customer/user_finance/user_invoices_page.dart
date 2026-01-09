@@ -8,6 +8,7 @@ import 'package:khu_lien_hop_tt/services/user_billing_service.dart';
 import 'package:khu_lien_hop_tt/widgets/success_dialog.dart';
 import 'package:khu_lien_hop_tt/widgets/neo_loading.dart';
 
+/// Màn danh sách hoá đơn + thanh toán của khách (có trạng thái embedded hoặc full screen).
 class UserInvoicesPage extends StatefulWidget {
   const UserInvoicesPage({super.key, this.embedded = false});
 
@@ -32,6 +33,7 @@ class _UserInvoicesPageState extends State<UserInvoicesPage> {
   }
 
   Future<void> _loadData() async {
+    // Lấy song song hoá đơn và lịch sử thanh toán, map payment theo invoice
     setState(() {
       _loading = true;
       _error = null;

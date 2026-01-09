@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:khu_lien_hop_tt/widgets/neu_button.dart';
 import 'package:neubrutalism_ui/neubrutalism_ui.dart';
 
+// Dialog thành công phong cách brutalist với animation scale+fade.
 Future<void> showSuccessDialog(
   BuildContext context, {
   String title = 'Thành công',

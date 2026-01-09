@@ -1,5 +1,6 @@
 import '../utils/json_utils.dart';
 
+// Thông tin đội tham gia/đăng ký giao lưu
 class TeamInfo {
   final String? captainUserId;
   final String? teamName;
@@ -33,6 +34,7 @@ class TeamInfo {
       };
 }
 
+// Yêu cầu ghép trận/giao lưu: gồm khung thời gian mong muốn, bộ môn, sân và đội tham gia
 class MatchRequest {
   final String id;
   final String sportId;

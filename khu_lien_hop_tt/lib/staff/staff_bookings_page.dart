@@ -50,6 +50,7 @@ const Map<String, Color> _statusColors = {
   'no_show': Color(0xFF7C5CFF),
 };
 
+// Trang nhân viên quản lý đặt sân: lọc theo ngày/trạng thái, tìm kiếm và đổi trạng thái nhanh
 class StaffBookingsPage extends StatefulWidget {
   const StaffBookingsPage({
     super.key,
@@ -138,6 +139,7 @@ class _StaffBookingsPageState extends State<StaffBookingsPage> {
     }
   }
 
+  // Lấy thông tin cơ sở (sân) và danh sách môn để render filter
   Future<void> _fetchFacilityAndSports() async {
     try {
       final facility = await _api.staffGetFacility();
@@ -153,6 +155,7 @@ class _StaffBookingsPageState extends State<StaffBookingsPage> {
     }
   }
 
+  // Lấy danh sách booking theo bộ lọc ngày/trạng thái
   Future<void> _fetchBookings() async {
     setState(() {
       _refreshing = true;
@@ -1679,6 +1682,11 @@ class _CreateBookingSheetState extends State<_CreateBookingSheet> {
   final TextEditingController _contactController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
 
+  List<StaffCourt> _courtsForSport(String? sportId) {
+    if (sportId == null) return widget.courts;
+    return widget.courts.where((c) => c.court.sportId == sportId).toList();
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -1717,7 +1725,7 @@ class _CreateBookingSheetState extends State<_CreateBookingSheet> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                initialValue: _sportsId,
+                value: _sportsId,
                 decoration: const InputDecoration(labelText: 'Môn thể thao'),
                 items: widget.sports
                     .map(
@@ -1728,13 +1736,19 @@ class _CreateBookingSheetState extends State<_CreateBookingSheet> {
                     )
                     .toList(),
                 validator: (value) => value == null ? 'Chọn môn' : null,
-                onChanged: (value) => setState(() => _sportsId = value),
+                onChanged: (value) => setState(() {
+                  _sportsId = value;
+                  final allowedCourts = _courtsForSport(_sportsId);
+                  if (allowedCourts.every((c) => c.id != _courtId)) {
+                    _courtId = null; // reset if current court không thuộc môn mới
+                  }
+                }),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                initialValue: _courtId,
+                value: _courtId,
                 decoration: const InputDecoration(labelText: 'Chọn sân'),
-                items: widget.courts
+                items: _courtsForSport(_sportsId)
                     .map(
                       (court) => DropdownMenuItem(
                         value: court.id,

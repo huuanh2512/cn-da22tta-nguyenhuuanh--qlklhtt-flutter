@@ -8,6 +8,7 @@ import 'package:khu_lien_hop_tt/services/auth_service.dart';
 import 'package:khu_lien_hop_tt/widgets/success_dialog.dart';
 import 'package:khu_lien_hop_tt/widgets/neo_loading.dart';
 
+/// Lịch sử đặt sân của khách (upcoming + history), cho phép huỷ booking pending.
 class BookingHistoryPage extends StatefulWidget {
   const BookingHistoryPage({super.key, this.embedded = false});
 
@@ -31,6 +32,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
   }
 
   Future<void> _loadBookings() async {
+    // Tải toàn bộ booking của user, hiển thị cả sắp tới và lịch sử
     setState(() {
       _loading = true;
       _error = null;
@@ -88,6 +90,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
   }
 
   bool _isUpcoming(Booking booking, DateTime now) {
+    // Chỉ coi là sắp tới nếu chưa kết thúc và chưa bị huỷ
     if (booking.status.toLowerCase() == 'cancelled') return false;
     return booking.end.isAfter(now);
   }
@@ -144,6 +147,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
   bool _canCancel(Booking booking) => booking.status.toLowerCase() == 'pending';
 
   Future<void> _cancelBooking(Booking booking) async {
+    // Xác nhận huỷ, gọi API cancel, refresh danh sách và báo snack
     if (!_canCancel(booking) || _cancelling.contains(booking.id)) return;
 
     final confirmed = await showDialog<bool>(

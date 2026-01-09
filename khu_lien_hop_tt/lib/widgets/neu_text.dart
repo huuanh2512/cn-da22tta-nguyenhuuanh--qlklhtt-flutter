@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Lightweight replacement for the (currently missing) NeuText widget from
-/// the neubrutalism_ui package. Provides punchy typography for headings.
+/// Thay thế NeuText thiếu trong neubrutalism_ui, dùng typography đậm cho tiêu đề.
 class NeuText extends StatelessWidget {
   const NeuText(
     this.text, {

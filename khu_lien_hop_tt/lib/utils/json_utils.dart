@@ -1,3 +1,4 @@
+/// Hàm helper xử lý chuỗi/Map ObjectId từ API và trả về id dạng chuỗi hex.
 class JsonUtils {
   static final RegExp _objectIdPattern = RegExp(r'^[0-9a-fA-F]{24}$');
   static final RegExp _objectIdWrapperPattern =

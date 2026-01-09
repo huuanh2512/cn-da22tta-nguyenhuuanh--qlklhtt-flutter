@@ -25,6 +25,7 @@ import 'package:khu_lien_hop_tt/widgets/success_dialog.dart';
 const Duration _kQuickBookingDefaultDuration = Duration(minutes: 60);
 const List<int> _kQuickBookingDurationOptions = [60, 90, 120];
 
+// Trang tổng quan cho nhân viên: hiển thị sân, lịch đặt trong ngày, thông báo và đặt nhanh
 class StaffHomePage extends StatefulWidget {
   const StaffHomePage({super.key});
 
@@ -61,6 +62,7 @@ class _StaffHomePageState extends State<StaffHomePage> {
   static const Set<String> _bookingActiveStatuses = {'confirmed', 'pending'};
   static const Duration _activeBookingLookBack = Duration(hours: 2);
   static const Duration _activeBookingLookAhead = Duration(hours: 24);
+  static const double _priceDiffTolerance = 0.01; // Avoid false positives from tiny stored epsilons
 
   Widget _brutalistPanel({
     required Widget child,
@@ -88,6 +90,7 @@ class _StaffHomePageState extends State<StaffHomePage> {
     _load();
   }
 
+  // Tải dữ liệu cơ sở, môn, lịch đặt, thông báo để dựng dashboard
   Future<void> _load({bool showSpinner = true}) async {
     if (showSpinner) {
       setState(() {
@@ -1164,13 +1167,24 @@ class _StaffHomePageState extends State<StaffHomePage> {
                   ),
                 ],
               ),
-              if (court.maintenance.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Text('Chưa có lịch bảo trì nào.'),
-                )
-              else
-                ...court.maintenance.map((m) => _buildMaintenanceTile(court, m)),
+              // Ẩn các lịch bảo trì đã hủy để tránh hiển thị lịch cũ
+              // hoặc các lần hủy không còn hiệu lực.
+              ...(() {
+                final visibleMaintenance = court.maintenance
+                    .where((m) => (m.status ?? '').toLowerCase() != 'cancelled')
+                    .toList();
+                if (visibleMaintenance.isEmpty) {
+                  return const [
+                    Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Text('Chưa có lịch bảo trì nào.'),
+                    ),
+                  ];
+                }
+                return visibleMaintenance
+                    .map((m) => _buildMaintenanceTile(court, m))
+                    .toList();
+              })(),
             ],
           ),
         ),
@@ -1827,11 +1841,11 @@ class _StaffHomePageState extends State<StaffHomePage> {
                 final prevActive = priceProfile?.active ?? true;
                 final prevSport = priceProfile?.sportId ?? court.court.sportId;
                 final bool priceChanged =
-                    priceProfile == null ||
-                    (baseRate - (prevRate ?? 0)).abs() > 0.0001 ||
-                    (taxValue - prevTax).abs() > 0.0001 ||
-                    priceActive != prevActive ||
-                    (prevSport != chosenSportId);
+                  priceProfile == null ||
+                  (baseRate - (prevRate ?? 0)).abs() > _priceDiffTolerance ||
+                  (taxValue - prevTax).abs() > _priceDiffTolerance ||
+                  priceActive != prevActive ||
+                  (prevSport != chosenSportId);
                 if (priceChanged) {
                   pricePayload = {
                     'facilityId': court.facilityId,
@@ -2139,22 +2153,49 @@ class _StaffHomePageState extends State<StaffHomePage> {
           courtUpdates = Map<String, dynamic>.from(result);
         }
 
+        bool courtUpdated = false;
         if (courtUpdates.isNotEmpty) {
-          await _api.staffUpdateCourt(court.id, courtUpdates);
+          try {
+            await _api.staffUpdateCourt(court.id, courtUpdates);
+            courtUpdated = true;
+          } catch (e) {
+            final msg = _friendlyError(e);
+            // Nếu server trả 404 (sân đã bị xóa hoặc không còn thuộc cơ sở), làm mới dữ liệu và báo nhẹ.
+            if (msg.contains('404')) {
+              if (mounted) {
+                await _load(showSpinner: false);
+              }
+              return;
+            }
+            rethrow;
+          }
         }
+
+        String? priceError;
         if (pricePayload != null) {
-          await _api.staffUpsertPriceProfile(pricePayload);
+          try {
+            await _api.staffUpsertPriceProfile(pricePayload);
+          } catch (e) {
+            priceError = _friendlyError(e);
+          }
         }
+
         if (!mounted) return;
         await _load(showSpinner: false);
-        final sections = <String>[
-          if (courtUpdates.isNotEmpty) 'thông tin sân',
-          if (pricePayload != null) 'giá',
-        ];
-        final summary = sections.isEmpty
-            ? 'thông tin'
-            : sections.join(' và ');
-        await _showSnack('Đã cập nhật $summary');
+
+        if (priceError != null) {
+          await _showSnack(
+            'Đã cập nhật thông tin sân nhưng chưa lưu bảng giá: $priceError',
+            isError: true,
+          );
+        } else {
+          final sections = <String>[
+            if (courtUpdated) 'thông tin sân',
+            if (pricePayload != null) 'giá',
+          ];
+          final summary = sections.isEmpty ? 'thông tin' : sections.join(' và ');
+          await _showSnack('Đã cập nhật $summary');
+        }
       } catch (e) {
         _showSnack(_friendlyError(e), isError: true);
       }

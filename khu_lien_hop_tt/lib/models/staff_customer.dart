@@ -1,5 +1,6 @@
 import '../utils/json_utils.dart';
 
+// Parse thời gian theo nhiều định dạng (ISO, timestamp, mongo)
 DateTime? _parseDate(dynamic value) {
   if (value == null) return null;
   if (value is DateTime) return value;
@@ -23,6 +24,7 @@ DateTime? _parseDate(dynamic value) {
   return DateTime.tryParse(text);
 }
 
+// Thông tin booking ngắn gọn gắn với khách (dùng cho thống kê)
 class StaffCustomerBooking {
   final String? id;
   final DateTime? start;
@@ -61,6 +63,7 @@ class StaffCustomerBooking {
   }
 }
 
+// Thông tin khách dưới góc nhìn nhân viên: lượt đặt, liên hệ, thống kê
 class StaffCustomer {
   final String id;
   final String? name;

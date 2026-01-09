@@ -5,9 +5,11 @@ import 'package:khu_lien_hop_tt/models/sport.dart';
 import 'package:khu_lien_hop_tt/services/user_booking_service.dart';
 import 'package:khu_lien_hop_tt/widgets/neu_button.dart';
 import 'package:khu_lien_hop_tt/widgets/neo_loading.dart';
+import 'package:khu_lien_hop_tt/utils/sport_icons.dart';
 
 import 'package:khu_lien_hop_tt/customer/user_booking/facility_court_page.dart';
 
+/// Bước đầu chọn môn để tiếp tục luồng đặt sân (embedded hoặc full screen).
 class UserBookingSportSelectionPage extends StatefulWidget {
   const UserBookingSportSelectionPage({super.key, this.embedded = false});
 
@@ -30,6 +32,7 @@ class _UserBookingSportSelectionPageState extends State<UserBookingSportSelectio
   }
 
   Future<void> _loadSports() async {
+    // Lấy danh sách môn từ API, hiển thị lỗi/nothing nếu rỗng
     setState(() {
       _loading = true;
       _error = null;
@@ -242,8 +245,8 @@ class _UserBookingSportSelectionPageState extends State<UserBookingSportSelectio
                           ),
                         ],
                       ),
-                      child: const Icon(
-                        Icons.sports_tennis,
+                      child: Icon(
+                        sportIcon(sport.code),
                         size: 28,
                       ),
                     ),

@@ -1,5 +1,6 @@
 import '../utils/json_utils.dart';
 
+// Hồ sơ khách hàng: thông tin liên hệ, sở thích môn và membership
 class UserProfile {
   final String id;
   final String email;

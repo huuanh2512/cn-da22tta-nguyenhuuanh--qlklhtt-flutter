@@ -41,6 +41,7 @@ class _AutoCancelProcessResult {
   });
 }
 
+/// Trang tạo/tham gia match request: lọc, auto-cancel, và tham gia đội.
 class MatchRequestsPage extends StatefulWidget {
   const MatchRequestsPage({super.key, this.embedded = false});
 
@@ -209,6 +210,7 @@ class _MatchRequestsPageState extends State<MatchRequestsPage> {
   }
 
   void _startAutoCancelTicker() {
+    // Định kỳ mỗi phút đánh dấu request quá giờ mà thiếu người chơi
     _autoCancelTicker?.cancel();
     _autoCancelTicker = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted) return;
@@ -233,6 +235,7 @@ class _MatchRequestsPageState extends State<MatchRequestsPage> {
   _AutoCancelProcessResult _autoCancelExpiredRequests(
     List<MatchRequest> requests,
   ) {
+    // Xác định danh sách request cần auto-cancel dựa trên giờ bắt đầu và số người tham gia
     final nowUtc = DateTime.now().toUtc();
     final cancelledIds = <String>{};
     for (final request in requests) {
@@ -247,6 +250,7 @@ class _MatchRequestsPageState extends State<MatchRequestsPage> {
   }
 
   bool _shouldAutoCancelRequest(MatchRequest request, DateTime nowUtc) {
+    // Chỉ auto-cancel request open đã quá giờ bắt đầu mà chưa đủ người
     if (request.status.toLowerCase() != 'open') return false;
     final desiredStart = request.desiredStart;
     if (desiredStart == null) return false;

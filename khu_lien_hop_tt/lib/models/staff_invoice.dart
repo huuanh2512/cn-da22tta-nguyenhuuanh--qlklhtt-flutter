@@ -1,3 +1,4 @@
+// Khoản thanh toán trên hoá đơn (staff view)
 class StaffInvoicePayment {
   final String id;
   final String provider;
@@ -33,6 +34,7 @@ class StaffInvoicePayment {
   }
 }
 
+// Thông tin booking rút gọn đi kèm hoá đơn
 class StaffInvoiceBookingInfo {
   final String id;
   final DateTime? start;
@@ -62,6 +64,7 @@ class StaffInvoiceBookingInfo {
   }
 }
 
+// Thông tin khách rút gọn đi kèm hoá đơn
 class StaffInvoiceCustomerInfo {
   final String id;
   final String? name;
@@ -85,6 +88,7 @@ class StaffInvoiceCustomerInfo {
   }
 }
 
+// Thông tin sân rút gọn đi kèm hoá đơn
 class StaffInvoiceCourtInfo {
   final String id;
   final String? name;
@@ -105,6 +109,7 @@ class StaffInvoiceCourtInfo {
   }
 }
 
+// Hoá đơn trong giao diện nhân viên: gồm booking/customer/sân và danh sách thanh toán
 class StaffInvoice {
   final String id;
   final String bookingId;
@@ -167,6 +172,7 @@ class StaffInvoice {
   }
 }
 
+// Tổng quan số liệu hoá đơn (đếm, tổng tiền, doanh thu)
 class StaffInvoiceSummary {
   final int invoiceCount;
   final double totalInvoiced;
@@ -196,6 +202,7 @@ class StaffInvoiceSummary {
   }
 }
 
+// Gói response gồm danh sách hoá đơn và summary
 class StaffInvoiceResponse {
   final List<StaffInvoice> invoices;
   final StaffInvoiceSummary summary;

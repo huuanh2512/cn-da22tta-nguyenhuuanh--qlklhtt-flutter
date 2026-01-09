@@ -10,6 +10,7 @@ import 'package:khu_lien_hop_tt/widgets/neo_loading.dart';
 
 import 'package:khu_lien_hop_tt/customer/user_booking/booking_confirmation_page.dart';
 
+/// Bước chọn thời gian đặt sân: kiểm tra trống và báo giá trước khi xác nhận.
 class BookingSchedulerPage extends StatefulWidget {
   final Sport sport;
   final Facility facility;
@@ -90,6 +91,7 @@ class _BookingSchedulerPageState extends State<BookingSchedulerPage> {
   }
 
   Future<void> _checkAvailabilityAndQuote() async {
+    // Kiểm tra thời gian hợp lệ, gọi API availability, sau đó báo giá nếu còn trống
     if (_checking) return;
     final now = DateTime.now();
     if (_start.isBefore(now)) {
@@ -149,6 +151,7 @@ class _BookingSchedulerPageState extends State<BookingSchedulerPage> {
   }
 
   Future<void> _goToConfirmation() async {
+    // Điều hướng sang màn xác nhận, trả về true nếu đặt thành công để pop về trước
     if (_quote == null) return;
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(

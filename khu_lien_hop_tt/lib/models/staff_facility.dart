@@ -2,6 +2,7 @@ import 'court.dart';
 import 'facility.dart';
 import 'maintenance.dart';
 
+// Chuẩn hoá danh sách tiện ích từ chuỗi hoặc mảng
 List<String> _stringList(dynamic value) {
   if (value == null) return const [];
   if (value is List) {
@@ -21,6 +22,7 @@ List<String> _stringList(dynamic value) {
   return const [];
 }
 
+// Court kèm tiện ích và lịch bảo trì để hiển thị cho staff
 class StaffCourt {
   final Court court;
   final List<String> amenities;
@@ -59,6 +61,7 @@ class StaffCourt {
   }
 }
 
+// Gói dữ liệu cơ sở cho staff: facility + danh sách sân
 class StaffFacilityData {
   final Facility facility;
   final List<StaffCourt> courts;

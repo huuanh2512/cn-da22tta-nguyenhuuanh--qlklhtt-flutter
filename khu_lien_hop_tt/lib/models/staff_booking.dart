@@ -1,6 +1,7 @@
 import 'booking.dart';
 import '../utils/json_utils.dart';
 
+// Parse timestamp/iso/mongo và đưa về local
 DateTime? _parseDate(dynamic value) {
   if (value is DateTime) return value.toLocal();
   if (value is String && value.isNotEmpty) {
@@ -20,6 +21,7 @@ DateTime? _parseDate(dynamic value) {
   return null;
 }
 
+// Thông tin khách hàng rút gọn trong chế độ staff
 class StaffBookingCustomer {
   final String? id;
   final String? name;
@@ -46,6 +48,7 @@ class StaffBookingCustomer {
   }
 }
 
+// Thông tin sân rút gọn cho staff
 class StaffBookingCourt {
   final String? id;
   final String? name;
@@ -62,6 +65,7 @@ class StaffBookingCourt {
   }
 }
 
+// Thông tin môn rút gọn cho staff
 class StaffBookingSport {
   final String? id;
   final String? name;
@@ -76,6 +80,7 @@ class StaffBookingSport {
   }
 }
 
+// Gói dữ liệu booking cho nhân viên: booking gốc + thông tin khách/sân/môn và mốc xác nhận/hủy
 class StaffBooking {
   final Booking booking;
   final StaffBookingCustomer? customer;

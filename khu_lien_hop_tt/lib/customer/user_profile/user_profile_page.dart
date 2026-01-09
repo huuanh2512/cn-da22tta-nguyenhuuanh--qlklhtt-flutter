@@ -19,6 +19,7 @@ import '../../screens/auth/login_page.dart';
 import '../user_booking/booking_history_page.dart';
 import '../user_finance/user_invoices_page.dart';
 
+/// Hồ sơ khách: xem/chỉnh sửa thông tin, đổi mật khẩu, xem hoạt động (booking/invoice/match).
 class UserProfilePage extends StatefulWidget {
   const UserProfilePage({
     super.key,
@@ -88,6 +89,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 
   Future<void> _loadData({bool showLoading = true}) async {
+    // Gọi song song hồ sơ, môn, booking, invoice, match request; merge invoice từ 2 nguồn
     if (showLoading) {
       setState(() {
         _loading = true;
@@ -136,6 +138,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 
   void _handleScroll() {
+    // Thu gọn header khi cuộn qua ngưỡng
     final collapsed = _scrollController.hasClients &&
         _scrollController.offset > 32.0;
     if (collapsed != _compactHeader) {
@@ -164,6 +167,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
     List<UserInvoice> api,
     List<UserInvoice> billing,
   ) {
+    // Ghép invoice từ API và billing service, ưu tiên không trùng id
     if (api.isEmpty) return billing;
     if (billing.isEmpty) return api;
     final map = <String, UserInvoice>{
@@ -205,6 +209,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 
   Future<void> _saveProfile() async {
+    // Lưu thông tin cá nhân, cập nhật AuthService và báo dialog thành công
     final profile = _profile;
     if (profile == null) return;
     final name = _nameController.text.trim();
@@ -248,6 +253,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 
   Future<void> _changePassword() async {
+    // Đổi mật khẩu: validate cơ bản, gọi API, báo thành công hoặc lỗi
     final current = _currentPasswordController.text.trim();
     final next = _newPasswordController.text.trim();
     final confirm = _confirmPasswordController.text.trim();

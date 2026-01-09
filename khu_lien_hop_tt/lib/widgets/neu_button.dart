@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:neubrutalism_ui/neubrutalism_ui.dart';
 
-/// Lightweight public-facing wrapper around the private NeuButton
-/// implementation from the neubrutalism_ui package. This keeps the
-/// API available to the app even though the package does not export it.
+/// Bọc lại NeuButton (private) của neubrutalism_ui để app dùng được API công khai.
 class NeuButton extends StatefulWidget {
   const NeuButton({
     super.key,
@@ -68,6 +66,7 @@ class _NeuButtonState extends State<NeuButton>
 
   Future<void> _handleTap() async {
     if (widget.onPressed == null) return;
+    // Chạy animation nhấn trước/sau khi gọi callback nếu bật
     if (widget.enableAnimation) {
       await _controller.forward();
       widget.onPressed?.call();

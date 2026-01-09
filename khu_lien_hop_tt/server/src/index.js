@@ -14,6 +14,16 @@ import { requireAdmin } from './middlewares/requireAdmin.js';
 import { requireStaff } from './middlewares/requireStaff.js';
 import { requireVerifiedCustomer } from './middlewares/requireVerifiedCustomer.js';
 
+/*
+ * Tóm tắt nhanh index.js (server Express cho khu liên hợp thể thao):
+ * - Cấu hình Express, CORS, logger và JSON body parser.
+ * - Đọc biến môi trường (MongoDB, JWT, cấu hình auto-cancel) và khai báo hằng số hệ thống.
+ * - Middleware xác thực Bearer/JWT ở mức toàn cục, gắn user vào request nếu hợp lệ.
+ * - Bộ hàm tiện ích chuẩn hóa dữ liệu (ObjectId, số, ngày), làm sạch dữ liệu log/audit, cache tài liệu.
+ * - Luồng nghiệp vụ: đặt sân, match request, hóa đơn, thanh toán, thông báo, tự động hủy booking quá hạn.
+ * - Các nhóm API dành cho khách hàng, nhân viên, quản trị và báo cáo thống kê.
+ */
+
 const app = express();
 const allowedOrigins = (process.env.CORS_ORIGINS || '')
   .split(',')
@@ -33,7 +43,7 @@ app.use(cors({
 app.use(express.json());
 app.use(morgan('dev'));
 
-// Mongo connection details come from env so we can deploy anywhere.
+// Thông tin kết nối MongoDB lấy từ biến môi trường để triển khai linh hoạt.
 const MONGODB_URI = process.env.MONGODB_URI;
 if (!MONGODB_URI) {
   throw new Error('MONGODB_URI is not set');
@@ -52,9 +62,10 @@ const SYSTEM_ACTOR_ID = (() => {
   return new ObjectId('000000000000000000000000');
 })();
 
-// Allowed statuses for courts
+// Trạng thái sân cho phép
 const COURT_ALLOWED_STATUSES = new Set(['active', 'inactive', 'maintenance', 'deleted']);
 
+// Kết nối MongoDB dựa trên URI/DB_NAME lấy từ biến môi trường
 async function connectMongo() {
   client = new MongoClient(MONGODB_URI);
   await client.connect();
@@ -62,22 +73,23 @@ async function connectMongo() {
   console.log(`[mongo] Connected to database ${DB_NAME}`);
 }
 
-// Health
+// Endpoint kiểm tra trạng thái sống của server
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// --- Auth helpers ---
+// --- Tiện ích xác thực ---
+// Middleware nhẹ: lấy token Bearer (nếu có), verify JWT và gắn payload vào req.user
 function authenticate(req, _res, next) {
   try {
     const h = req.headers?.authorization;
     if (h && typeof h === 'string' && h.startsWith('Bearer ')) {
       const token = h.substring('Bearer '.length);
       const payload = jwt.verify(token, JWT_SECRET);
-      req.user = payload; // { sub, role, iat, exp }
+      req.user = payload; // payload JWT: sub, role, iat, exp
     }
   } catch (_) {
-    // ignore invalid tokens
+    // Bỏ qua token không hợp lệ
   }
   next();
 }
@@ -87,8 +99,10 @@ app.use('/api/auth', authRoutes);
 app.use('/api/staff', authMiddleware, requireStaff);
 app.use('/api/admin', authMiddleware, requireAdmin);
 
+// Các key nhạy cảm cần loại bỏ khi ghi log/audit
 const SENSITIVE_AUDIT_KEYS = new Set(['password','passwordhash','resetpassword','token','authorization','authtoken','resettoken']);
 
+// Làm sạch dữ liệu trước khi lưu log/audit: bỏ key nhạy cảm, rút gọn chuỗi dài
 function sanitizeAuditData(value) {
   if (value === undefined || value === null) return undefined;
   if (value instanceof ObjectId) return value.toHexString();
@@ -110,11 +124,12 @@ function sanitizeAuditData(value) {
   }
   if (typeof value === 'function') return undefined;
   if (typeof value === 'string' && value.length > 2000) {
-    return `${value.substring(0, 1997)}...`; // avoid huge payloads
+    return `${value.substring(0, 1997)}...`; // tránh payload quá lớn
   }
   return value;
 }
 
+// Loại bỏ field null/undefined, trả về object gọn
 function cleanObject(obj) {
   if (!obj || typeof obj !== 'object') return undefined;
   const next = { ...obj };
@@ -124,6 +139,7 @@ function cleanObject(obj) {
   return Object.keys(next).length ? next : undefined;
 }
 
+// Chuẩn hóa giá trị về số (Number) nếu hợp lệ
 function coerceNumber(value) {
   if (value === undefined || value === null) return null;
   if (typeof value === 'number') {
@@ -140,6 +156,7 @@ function coerceNumber(value) {
   return null;
 }
 
+// Sinh danh sách các biến thể ObjectId/chuỗi từ input để hỗ trợ so khớp
 function buildIdCandidates(idParam) {
   const raw = String(idParam ?? '').trim();
   if (!raw) return [];
@@ -183,6 +200,7 @@ function buildIdCandidates(idParam) {
   return values;
 }
 
+// Trả về Set chứa id chuẩn hóa (chuỗi hex) để so sánh nhanh
 function buildComparableIdSet(value) {
   const inputs = Array.isArray(value) ? value : buildIdCandidates(value);
   const set = new Set();
@@ -211,6 +229,7 @@ function buildComparableIdSet(value) {
   return set;
 }
 
+// Tạo bộ lọc MongoDB cho _id với nhiều biến thể chuỗi/ObjectId
 function buildIdMatchFilter(idParam) {
   const candidates = buildIdCandidates(idParam);
   if (!candidates.length) return { _id: idParam };
@@ -230,10 +249,12 @@ function buildIdMatchFilter(idParam) {
   return { $or: orClauses };
 }
 
+// Thoát ký tự để dùng an toàn trong biểu thức Regex
 function escapeRegex(value) {
   return String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Ghi log debug cho thao tác xóa (admin) để dễ truy vết
 function logDeleteDebug(entry) {
   try {
     const payload = {
@@ -247,6 +268,7 @@ function logDeleteDebug(entry) {
   }
 }
 
+// Sinh email placeholder cho nhân viên chưa có email thật
 function buildSyntheticStaffEmail(id) {
   const rawId = id instanceof ObjectId ? id.toHexString() : String(id ?? '').trim();
   const token = rawId || new ObjectId().toHexString();
@@ -257,6 +279,7 @@ function isSyntheticStaffEmail(value) {
   return typeof value === 'string' && value.endsWith(`@${STAFF_PLACEHOLDER_EMAIL_DOMAIN}`);
 }
 
+// Làm sạch thông tin liên hệ nhân viên, ẩn email giả lập
 function sanitizeStaffContact(user) {
   if (!user || typeof user !== 'object') return user;
   const cloned = { ...user };
@@ -269,6 +292,7 @@ function sanitizeStaffContact(user) {
   return cloned;
 }
 
+// Chuẩn hóa input thành mảng chuỗi (từ array/string/object)
 function normalizeStringArrayInput(value) {
   if (!value) return [];
   if (Array.isArray(value)) {
@@ -290,6 +314,7 @@ function normalizeStringArrayInput(value) {
   return [];
 }
 
+// Chuyển đổi giá trị sang ObjectId nếu hợp lệ
 function coerceObjectId(value) {
   if (value == null) return null;
   const raw = String(value).trim();
@@ -300,8 +325,10 @@ function coerceObjectId(value) {
   return null;
 }
 
+// Tập giá trị gender cho phép
 const ALLOWED_GENDERS = new Set(['male', 'female', 'other']);
 
+// Chuẩn hóa đầu vào giới tính, trả về cờ provided và lỗi nếu sai
 function normalizeGenderInput(value) {
   if (value === undefined) return { provided: false };
   if (value === null) return { provided: true, value: null };
@@ -318,6 +345,7 @@ function normalizeGenderInput(value) {
   return { provided: true, error: 'invalid_gender' };
 }
 
+// Chuyển nhiều kiểu input (timestamp/chuỗi/object) sang Date hợp lệ
 function coerceDateValue(input) {
   if (input === undefined || input === null) return null;
   if (input instanceof Date) {
@@ -342,6 +370,7 @@ function coerceDateValue(input) {
   return null;
 }
 
+// Bọc kết quả ngày tháng với thông tin provided / lỗi
 function normalizeDateInput(value) {
   if (value === undefined) return { provided: false };
   if (value === null) return { provided: true, value: null };
@@ -353,6 +382,7 @@ function normalizeDateInput(value) {
   return { provided: true, error: 'invalid_date' };
 }
 
+// Chuẩn hóa đầu vào ObjectId, cho phép null rỗng
 function normalizeObjectIdInput(value) {
   if (value === undefined) return { provided: false };
   if (value === null) return { provided: true, value: null };
@@ -365,6 +395,7 @@ function normalizeObjectIdInput(value) {
   return { provided: true, error: 'invalid_object_id' };
 }
 
+// Trả về chuỗi _id (hex) nếu có thể
 function normalizeIdString(value) {
   if (value instanceof ObjectId) return value.toHexString();
   if (value && typeof value === 'object' && typeof value.toHexString === 'function') {
@@ -379,6 +410,7 @@ function normalizeIdString(value) {
   return null;
 }
 
+// Lấy ObjectId người dùng hiện tại từ các nguồn gắn trên req
 function getAppUserObjectId(req) {
   if (!req) return null;
   const candidates = [];
@@ -398,6 +430,7 @@ function getAppUserObjectId(req) {
   return null;
 }
 
+// Lấy tên hiển thị từ user hoặc profile
 function extractUserName(user) {
   if (!user || typeof user !== 'object') return null;
   if (typeof user.name === 'string' && user.name.trim().length) {
@@ -415,6 +448,7 @@ function extractUserName(user) {
   return null;
 }
 
+// Chuẩn hóa user để trả về cho client (auth/profile)
 function shapeAuthUser(userDoc) {
   if (!userDoc || typeof userDoc !== 'object') return null;
   const dateOfBirth = userDoc.dateOfBirth ?? userDoc.birthday ?? null;
@@ -439,6 +473,7 @@ function shapeAuthUser(userDoc) {
   return shaped;
 }
 
+// Rút gọn profile người dùng trả về UI, bỏ bớt metadata auth
 function shapeUserProfile(userDoc) {
   const shaped = shapeAuthUser(userDoc);
   if (!shaped) return null;
@@ -458,12 +493,14 @@ function shapeUserProfile(userDoc) {
   };
 }
 
+// Chuẩn hóa trạng thái thông báo (mặc định unread)
 function normalizeNotificationStatus(value) {
   if (typeof value !== 'string') return 'unread';
   const trimmed = value.trim().toLowerCase();
   return trimmed === 'read' ? 'read' : 'unread';
 }
 
+// Định dạng document thông báo trước khi trả về client
 function shapeNotification(doc) {
   if (!doc || typeof doc !== 'object') return null;
   return {
@@ -484,6 +521,7 @@ function shapeNotification(doc) {
   };
 }
 
+// Cache tài liệu cơ sở/vân động viên/bộ môn trong 5 phút để giảm truy vấn
 const DOC_CACHE_TTL_MS = 5 * 60 * 1000;
 const facilityCache = new Map();
 const courtCache = new Map();
@@ -504,6 +542,7 @@ function setCachedDocument(cache, key, doc) {
   cache.set(key, { doc, cachedAt: Date.now() });
 }
 
+// Lấy facility theo id, ưu tiên cache để tiết kiệm truy vấn
 async function fetchFacilityById(id) {
   if (!id) return null;
   if (id && typeof id === 'object' && id._id) return id;
@@ -517,6 +556,7 @@ async function fetchFacilityById(id) {
   return doc;
 }
 
+// Lấy court theo id với cache
 async function fetchCourtById(id) {
   if (!id) return null;
   if (id && typeof id === 'object' && id._id) return id;
@@ -530,6 +570,7 @@ async function fetchCourtById(id) {
   return doc;
 }
 
+// Lấy sport theo id với cache
 async function fetchSportById(id) {
   if (!id) return null;
   if (id && typeof id === 'object' && id._id) return id;
@@ -543,6 +584,7 @@ async function fetchSportById(id) {
   return doc;
 }
 
+// Lấy thông tin nhân viên từ req (JWT) và gắn lại vào req.staffUser
 async function fetchStaffUser(req, { refresh = false } = {}) {
   if (!req) return null;
   if (!refresh && req.staffUser) return req.staffUser;
@@ -559,6 +601,7 @@ async function fetchStaffUser(req, { refresh = false } = {}) {
   return sanitized;
 }
 
+// Chuẩn hóa tài liệu match request để render phía client
 function shapeMatchRequest(doc, { currentUserId } = {}) {
   if (!doc || typeof doc !== 'object') return null;
   const currentId = coerceObjectId(currentUserId);
@@ -645,6 +688,7 @@ function shapeMatchRequest(doc, { currentUserId } = {}) {
   });
 }
 
+// Truy vấn danh sách match request kèm lookup facility/court/sport
 async function fetchMatchRequests({ filter = {}, match, limit = 20, sort = { updatedAt: -1, _id: -1 }, currentUserId } = {}) {
   if (!db) return [];
   const matchStage = match || filter || {};
@@ -667,6 +711,7 @@ async function fetchMatchRequests({ filter = {}, match, limit = 20, sort = { upd
   return docs.map((doc) => shapeMatchRequest(doc, { currentUserId }));
 }
 
+// Map bí danh tên đội về teamA/teamB để dễ chuẩn hóa
 const TEAM_ALIAS_MAP = new Map([
   ['teama', 'teamA'],
   ['team a', 'teamA'],
@@ -682,9 +727,11 @@ const TEAM_ALIAS_MAP = new Map([
   ['b', 'teamB'],
 ]);
 
+// Giá trị cho phép khi chọn auto đội và mode
 const TEAM_AUTO_VALUES = new Set(['auto', 'balanced', 'balance', 'even', 'either']);
 const MATCH_REQUEST_ALLOWED_MODES = new Set(['solo','team']);
 
+// Chuẩn hóa lựa chọn đội (teamA/teamB/auto)
 function normalizeTeamChoice(input) {
   if (input === undefined) return { provided: false };
   if (input === null) return { provided: true, value: null };
@@ -699,6 +746,7 @@ function normalizeTeamChoice(input) {
   return { provided: true, error: 'invalid_team' };
 }
 
+// Chuẩn hóa tên đội, cắt tối đa 120 ký tự
 function normalizeTeamNameInput(value) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -725,6 +773,7 @@ function resolveTeamCapacity(source) {
 
 const USER_BOOKING_ALLOWED_STATUSES = new Set(['pending', 'confirmed', 'cancelled', 'completed', 'matched']);
 
+// Chuẩn hóa booking trả về client: ghép currency/total, làm sạch tên sân/cơ sở/môn
 function normalizeBookingForResponse(doc) {
   if (!doc || typeof doc !== 'object') return doc;
 
@@ -776,6 +825,7 @@ function normalizeBookingForResponse(doc) {
   };
 }
 
+// Tính số tiền hóa đơn dựa trên total hoặc snapshot
 function deriveBookingInvoiceAmount(bookingDoc) {
   if (!bookingDoc) return 0;
   const candidates = [bookingDoc.total, bookingDoc.pricingSnapshot?.total, bookingDoc.pricingSnapshot?.subtotal];
@@ -788,6 +838,7 @@ function deriveBookingInvoiceAmount(bookingDoc) {
   return 0;
 }
 
+// Lấy currency của hóa đơn, fallback VND
 function deriveBookingInvoiceCurrency(bookingDoc) {
   if (!bookingDoc) return 'VND';
   const candidates = [bookingDoc.currency, bookingDoc.pricingSnapshot?.currency];
@@ -799,6 +850,7 @@ function deriveBookingInvoiceCurrency(bookingDoc) {
   return 'VND';
 }
 
+// Mô tả hóa đơn thanh toán: "Thanh toán đặt sân | Sân | Cơ sở | thời gian"
 function buildBookingInvoiceDescription(bookingDoc) {
   const parts = ['Thanh toán đặt sân'];
   const courtName = typeof bookingDoc?.courtName === 'string' && bookingDoc.courtName.trim().length
@@ -816,6 +868,7 @@ function buildBookingInvoiceDescription(bookingDoc) {
   return parts.join(' | ');
 }
 
+// Đảm bảo tồn tại invoice cho booking (upsert), set status unpaid nếu mới
 async function ensureBookingInvoice(bookingDoc, { issuedAt } = {}) {
   if (!db || !bookingDoc || typeof bookingDoc !== 'object') return null;
   const bookingId = coerceObjectId(bookingDoc._id ?? bookingDoc.bookingId);
@@ -857,6 +910,7 @@ async function ensureBookingInvoice(bookingDoc, { issuedAt } = {}) {
   return result.value ?? null;
 }
 
+// Đánh dấu invoice liên quan booking là void khi booking bị hủy
 async function voidBookingInvoice(bookingDoc, { reason = 'booking_cancelled' } = {}) {
   if (!db || !bookingDoc || typeof bookingDoc !== 'object') return null;
   const bookingId = coerceObjectId(bookingDoc._id ?? bookingDoc.bookingId);
@@ -881,6 +935,7 @@ async function voidBookingInvoice(bookingDoc, { reason = 'booking_cancelled' } =
   return result.value ?? null;
 }
 
+// Thu gọn thông tin khách hàng cho UI nhân viên
 function shapeStaffCustomer(userDoc) {
   if (!userDoc || typeof userDoc !== 'object') return null;
   const customer = {
@@ -900,6 +955,7 @@ function shapeStaffCustomer(userDoc) {
   return cleanObject(customer);
 }
 
+// Định dạng booking cho màn hình staff (kèm court/sport đã sanitize)
 function shapeStaffBooking(doc) {
   if (!doc || typeof doc !== 'object') return null;
   const sanitized = sanitizeAuditData(doc) || {};
@@ -922,6 +978,7 @@ function shapeStaffBooking(doc) {
   });
 }
 
+// Chuẩn hóa số tiền payment
 function normalizePaymentAmount(value) {
   if (typeof value === 'number') return value;
   if (typeof value === 'string') {
@@ -935,6 +992,7 @@ function normalizePaymentAmount(value) {
   return 0;
 }
 
+// Lấy timestamp phù hợp nhất từ payment
 function normalizePaymentTimestamp(payment) {
   if (!payment || typeof payment !== 'object') return null;
   const candidates = [payment.createdAt, payment.processedAt, payment.paidAt, payment.updatedAt];
@@ -945,6 +1003,7 @@ function normalizePaymentTimestamp(payment) {
   return null;
 }
 
+// Chuẩn hóa danh sách payment và amount
 function shapeStaffPayments(payments) {
   if (!Array.isArray(payments) || !payments.length) return [];
   return payments.map((payment) => {
@@ -956,6 +1015,7 @@ function shapeStaffPayments(payments) {
   });
 }
 
+// Tính tổng tiền đã trả và mốc thanh toán cuối
 function computePaymentTotals(payments) {
   const normalizedPayments = shapeStaffPayments(payments);
   let totalPaid = 0;
@@ -972,6 +1032,7 @@ function computePaymentTotals(payments) {
   return { payments: normalizedPayments, totalPaid, lastPaymentAt };
 }
 
+// Định dạng invoice cho UI staff, tính outstanding và kèm booking/court/customer
 function shapeStaffInvoice(doc) {
   if (!doc || typeof doc !== 'object') return null;
   const amount = coerceNumber(doc.amount) ?? 0;
@@ -1022,6 +1083,7 @@ function shapeStaffInvoice(doc) {
   });
 }
 
+// Tóm tắt facility cho phần hồ sơ nhân viên
 function shapeStaffFacilitySummary(facilityDoc) {
   if (!facilityDoc || typeof facilityDoc !== 'object') return null;
   return cleanObject({
@@ -1035,6 +1097,7 @@ function shapeStaffFacilitySummary(facilityDoc) {
   });
 }
 
+// Đáp ứng profile staff: ghép facility + thông tin liên hệ
 function shapeStaffProfileResponse(staffUser, facilityDoc) {
   if (!staffUser || typeof staffUser !== 'object') return null;
   const facility = shapeStaffFacilitySummary(facilityDoc);
@@ -1056,6 +1119,7 @@ function shapeStaffProfileResponse(staffUser, facilityDoc) {
   });
 }
 
+// Lấy bookings kèm lookup facility/court/sport rồi chuẩn hóa
 async function getDecoratedBookings(match, { sort = { start: -1, _id: -1 }, limit } = {}) {
   if (!db) return [];
   const pipeline = [{ $match: match }];
@@ -1138,6 +1202,7 @@ async function checkCourtAvailability({ courtId, start, end, excludeBookingId = 
   return { available: true };
 }
 
+// Tạo nhiều notification cho user hoặc staff của facility
 async function createNotifications({
   userIds = [],
   staffFacilityId = null,
@@ -1164,6 +1229,7 @@ async function createNotifications({
   const docs = [];
 
   const pushDoc = (doc) => {
+    // Chuẩn hóa title/message/channel/priority, gắn metadata và thời gian tạo
     const clean = cleanObject({
       ...doc,
       title: trimmedTitle,
@@ -1198,6 +1264,7 @@ async function createNotifications({
   await db.collection('notifications').insertMany(docs);
 }
 
+// Gửi thông báo cho người tham gia match request
 async function notifyMatchParticipants(matchRequestDoc, { title, message, data }) {
   if (!matchRequestDoc) return;
   const ids = [];
@@ -1221,6 +1288,7 @@ async function notifyMatchParticipants(matchRequestDoc, { title, message, data }
   await createNotifications({ userIds: unique, title, message, data });
 }
 
+// Gửi thông báo cho staff thuộc facility của match request
 async function notifyStaffMatchRequest(matchRequestDoc, {
   title,
   message,
@@ -1241,6 +1309,7 @@ async function notifyStaffMatchRequest(matchRequestDoc, {
   });
 }
 
+// Thông báo staff khi khách tạo booking mới (pending/confirmed)
 async function notifyStaffBookingCreated(bookingDoc) {
   if (!bookingDoc) return;
 
@@ -1251,6 +1320,7 @@ async function notifyStaffBookingCreated(bookingDoc) {
     ? bookingDoc.status.trim().toLowerCase()
     : 'pending';
 
+  // Chỉ gửi cho booking pending/confirmed để tránh spam khi đã hoàn tất
   if (!['pending', 'confirmed'].includes(normalizedStatus)) return;
 
   const courtId = coerceObjectId(bookingDoc.courtId);
@@ -1337,10 +1407,12 @@ async function notifyStaffBookingCreated(bookingDoc) {
   });
 }
 
+// Thông báo staff khi booking bị hủy, kèm metadata đặt sân
 async function notifyStaffBookingCancelled(bookingDoc, { cancelledBy = 'customer' } = {}) {
   if (!bookingDoc) return;
 
   const facilityId = coerceObjectId(bookingDoc.facilityId);
+  // Nếu không có facilityId và không phải khách tự hủy thì bỏ qua (thiếu ngữ cảnh để nhắn staff)
   if (!facilityId && cancelledBy !== 'customer') return;
 
   const courtId = coerceObjectId(bookingDoc.courtId);
@@ -1428,11 +1500,13 @@ const systemAuditRequest = {
   get: () => '',
 };
 
+// Cron nhỏ: tự hủy booking ở trạng thái pending quá thời gian cấu hình
 async function autoCancelStaleBookings() {
   if (!db) return;
   if (!AUTO_CANCEL_PENDING_MINUTES || AUTO_CANCEL_PENDING_MINUTES <= 0) return;
 
   const now = new Date();
+  // Chọn các booking pending quá thời gian chờ duyệt và xử lý tối đa 100 bản ghi/lần
   const cutoff = new Date(now.getTime() - AUTO_CANCEL_PENDING_MINUTES * 60 * 1000);
   const staleBookings = await db.collection('bookings')
     .find({ status: 'pending', start: { $lte: cutoff } })
@@ -1478,12 +1552,14 @@ async function autoCancelStaleBookings() {
       await syncMatchRequestBooking(updatedBooking, { status: 'cancelled', cancelReasonCode: 'auto_pending_timeout', cancelledByRole: 'system' });
 
       try {
+        // Hủy hóa đơn liên quan nếu có
         await voidBookingInvoice(updatedBooking, { reason: 'system_auto_timeout' });
       } catch (invoiceError) {
         console.error('autoCancel: failed to void invoice', invoiceError);
       }
 
       try {
+        // Báo staff về việc hủy tự động
         await notifyStaffBookingCancelled(updatedBooking, { cancelledBy: 'system_auto_timeout' });
       } catch (notificationError) {
         console.error('autoCancel: failed to notify staff', notificationError);
@@ -1560,6 +1636,8 @@ async function notifyStaffPaymentReceived({ bookingDoc, invoiceDoc, paymentDoc, 
         ? bookingDoc.currency.trim().toUpperCase()
         : 'VND'));
 
+  // Ưu tiên currency từ payment -> invoice -> booking; mặc định VND
+
   const formatMoney = () => {
     try {
       return new Intl.NumberFormat('vi-VN', { style: 'currency', currency }).format(amount);
@@ -1605,6 +1683,7 @@ async function notifyStaffPaymentReceived({ bookingDoc, invoiceDoc, paymentDoc, 
   });
 }
 
+// Xây dựng filter notification cho staff (theo recipientId hoặc facility)
 function buildStaffNotificationClauses(staffUser) {
   if (!staffUser) return { orClauses: [], facilityCandidates: [] };
   const facilityCandidates = buildIdCandidates(staffUser.facilityId);
@@ -1639,6 +1718,7 @@ function buildStaffNotificationClauses(staffUser) {
   return { orClauses, facilityCandidates };
 }
 
+// Kiểm tra notification có khớp nhân viên hiện tại không
 function notificationMatchesStaff(notificationDoc, staffUser) {
   if (!notificationDoc || !staffUser) return false;
 
@@ -1662,6 +1742,7 @@ function notificationMatchesStaff(notificationDoc, staffUser) {
   return false;
 }
 
+// Nếu match request có đủ thông tin, tự tạo booking pending và thông báo
 async function ensureMatchRequestBooking(matchRequestDoc, { req } = {}) {
   if (!matchRequestDoc) return matchRequestDoc;
   const matchRequestId = coerceObjectId(matchRequestDoc._id);
@@ -1669,6 +1750,7 @@ async function ensureMatchRequestBooking(matchRequestDoc, { req } = {}) {
 
   const existingBookingId = coerceObjectId(matchRequestDoc.matchedBookingId);
   if (existingBookingId) {
+    // Nếu đã có booking liên kết, đồng bộ trạng thái rồi trả về
     const booking = await db.collection('bookings').findOne({ _id: existingBookingId });
     if (booking) {
       const bookingStatus = booking.status ?? matchRequestDoc.bookingStatus ?? 'pending';
@@ -1702,6 +1784,7 @@ async function ensureMatchRequestBooking(matchRequestDoc, { req } = {}) {
 
   const availability = await checkCourtAvailability({ courtId, start, end });
   if (!availability.available) {
+    // Nếu sân trùng lịch: mở lại match request, thông báo người tham gia
     await db.collection('match_requests').updateOne(
       { _id: matchRequestId },
       { $set: { status: 'open', bookingStatus: 'conflict', updatedAt: new Date() } },
@@ -1740,6 +1823,7 @@ async function ensureMatchRequestBooking(matchRequestDoc, { req } = {}) {
   }
 
   const bookingUser = await db.collection('users').findOne({ _id: bookingCustomerId });
+  // Tính giá dựa trên cơ sở/môn/sân/time và user
   const pricing = await quotePrice({
     db,
     facilityId: facilityId.toHexString(),
@@ -1836,6 +1920,7 @@ async function ensureMatchRequestBooking(matchRequestDoc, { req } = {}) {
   return refreshed || matchRequestDoc;
 }
 
+// Đồng bộ trạng thái match request khi booking thay đổi (confirm/cancel/...)
 async function syncMatchRequestBooking(updatedBooking, { status, cancelReasonCode, cancelledByRole } = {}) {
   if (!updatedBooking?.matchRequestId) return;
   const matchRequestId = coerceObjectId(updatedBooking.matchRequestId);
@@ -1912,6 +1997,7 @@ async function syncMatchRequestBooking(updatedBooking, { status, cancelReasonCod
   }
 
 
+// Hủy các match request trùng giờ sau khi một booking được chốt
 async function cancelOverlappingMatchRequests(bookingDoc) {
   if (!bookingDoc) return;
   const courtId = coerceObjectId(bookingDoc.courtId);
@@ -1926,6 +2012,7 @@ async function cancelOverlappingMatchRequests(bookingDoc) {
     desiredStart: { $lt: bookingEnd },
     desiredEnd: { $gt: bookingStart },
   };
+  // Nếu booking này xuất phát từ một match request đã gắn, bỏ qua chính nó khi hủy các request khác
   if (linkedMatchRequestId) conflictFilter._id = { $ne: linkedMatchRequestId };
 
   const overlappingRequests = await db.collection('match_requests').find(conflictFilter).toArray();
@@ -2016,7 +2103,7 @@ async function recordAudit(req, entry = {}) {
       actorId = new ObjectId(String(actorSource));
     }
     if (!actorId) {
-      // Schema currently requires actorId. Skip logging if none supplied.
+      // Schema yêu cầu actorId; nếu thiếu thì bỏ qua log để tránh lỗi
       return;
     }
 
@@ -2043,7 +2130,8 @@ async function recordAudit(req, entry = {}) {
   }
 }
 
-// --- Auth ---
+// --- Nhóm Auth ---
+// Đăng ký tài khoản khách hàng mới
 app.post('/api/auth/register', async (req, res, next) => {
   try {
     const { email, password, name, gender, dateOfBirth, mainSportId } = req.body || {};
@@ -2096,6 +2184,7 @@ app.post('/api/auth/register', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Đăng nhập, trả JWT + thông tin user
 app.post('/api/auth/login', async (req, res, next) => {
   try {
     const { email, password } = req.body || {};
@@ -2117,7 +2206,7 @@ app.post('/api/auth/login', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Sports list (basic)
+// Sports list (basic) - danh sách môn thể thao
 app.get('/api/sports', async (req, res, next) => {
   try {
     const includeCount = req.query.includeCount === 'true';
@@ -2145,7 +2234,7 @@ app.get('/api/sports', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Facilities
+// Danh sách cơ sở đang hoạt động
 app.get('/api/facilities', async (req, res, next) => {
   try {
     const items = await db.collection('facilities').find({ active: { $ne: false } }).sort({ name: 1 }).toArray();
@@ -2153,7 +2242,7 @@ app.get('/api/facilities', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Courts by facility (and optional sport)
+// Danh sách sân theo facility, có thể lọc theo sportId
 app.get('/api/facilities/:id/courts', async (req, res, next) => {
   try {
     const filter = { facilityId: new ObjectId(req.params.id), status: { $ne: 'deleted' } };
@@ -2163,7 +2252,7 @@ app.get('/api/facilities/:id/courts', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Availability check for a court (avoid conflicts with bookings and maintenance)
+// Kiểm tra sân rảnh trong khoảng thời gian, tránh trùng booking/maintenance
 app.get('/api/courts/:id/availability', async (req, res, next) => {
   try {
     const { start, end } = req.query;
@@ -2184,7 +2273,7 @@ app.get('/api/courts/:id/availability', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Price quote endpoint
+// Tính báo giá thuê sân (server-side pricing)
 app.post('/api/price/quote', async (req, res, next) => {
   try {
     const { facilityId, sportId, courtId, start, end, currency = 'VND', userId } = req.body;
@@ -2196,15 +2285,15 @@ app.post('/api/price/quote', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Create booking (minimal validation)
+// Tạo booking (validation tối thiểu, kiểm tra trùng lịch, tính lại giá)
 app.post('/api/bookings', async (req, res, next) => {
   try {
     const payload = req.body;
-    // Basic check: required fields exist
+    // Kiểm tra tối thiểu: các trường bắt buộc phải có
     const required = ['customerId','facilityId','courtId','sportId','start','end','status','pricingSnapshot','currency'];
     for (const k of required) if (!(k in payload)) return res.status(400).json({ error: `Missing ${k}` });
 
-    // Coerce ObjectIds and dates
+    // Ép kiểu ObjectId và Date từ payload
     const customerId = coerceObjectId(payload.customerId);
     const facilityId = coerceObjectId(payload.facilityId);
     const courtId = coerceObjectId(payload.courtId);
@@ -2215,7 +2304,7 @@ app.post('/api/bookings', async (req, res, next) => {
     if (!sportId) return res.status(400).json({ error: 'Invalid sportId' });
     const s = new Date(payload.start);
     const e = new Date(payload.end);
-    // Check availability
+    // Kiểm tra sân/bảo trì trùng lịch
     const conflict = await db.collection('bookings').findOne({
       courtId,
       $or: [ { start: { $lt: e }, end: { $gt: s } } ],
@@ -2227,7 +2316,7 @@ app.post('/api/bookings', async (req, res, next) => {
     });
     if (conflict || maintenance) return res.status(409).json({ error: 'Court not available for the requested time' });
 
-    // Recompute price on server to trust pricing
+    // Tính lại giá ở server để đảm bảo chính xác
     const quote = await quotePrice({
       db,
       facilityId: facilityId.toHexString(),
@@ -2313,7 +2402,7 @@ app.post('/api/bookings', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Get bookings by customer
+// Lấy danh sách booking theo customerId (admin/staff dùng)
 app.get('/api/customers/:id/bookings', async (req, res, next) => {
   try {
     const id = new ObjectId(req.params.id);
@@ -2322,6 +2411,7 @@ app.get('/api/customers/:id/bookings', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Lịch sắp tới của khách (đã đăng nhập, verified)
 app.get('/api/user/bookings/upcoming', authMiddleware, requireVerifiedCustomer, async (req, res, next) => {
   try {
     const userId = getAppUserObjectId(req);
@@ -2345,6 +2435,7 @@ app.get('/api/user/bookings/upcoming', authMiddleware, requireVerifiedCustomer, 
   } catch (e) { next(e); }
 });
 
+// Lịch sử booking của khách (có filter status)
 app.get('/api/user/bookings', authMiddleware, requireVerifiedCustomer, async (req, res, next) => {
   try {
     const userId = getAppUserObjectId(req);
@@ -2366,6 +2457,7 @@ app.get('/api/user/bookings', authMiddleware, requireVerifiedCustomer, async (re
   } catch (e) { next(e); }
 });
 
+// Khách tự hủy booking của mình
 app.put('/api/bookings/:id/cancel', authMiddleware, requireVerifiedCustomer, async (req, res, next) => {
   try {
     const userId = getAppUserObjectId(req);
@@ -2436,6 +2528,7 @@ app.put('/api/bookings/:id/cancel', authMiddleware, requireVerifiedCustomer, asy
 });
 
 // --- Customer billing ---
+// Khách xem danh sách hóa đơn của mình
 app.get('/api/user/invoices', authMiddleware, requireVerifiedCustomer, async (req, res, next) => {
   try {
     const userId = getAppUserObjectId(req);
@@ -2512,6 +2605,7 @@ app.get('/api/user/invoices', authMiddleware, requireVerifiedCustomer, async (re
   } catch (e) { next(e); }
 });
 
+// Khách xem lịch sử thanh toán
 app.get('/api/user/payments', authMiddleware, requireVerifiedCustomer, async (req, res, next) => {
   try {
     const userId = getAppUserObjectId(req);
@@ -2590,6 +2684,7 @@ app.get('/api/user/payments', authMiddleware, requireVerifiedCustomer, async (re
   } catch (e) { next(e); }
 });
 
+// Khách thanh toán một hóa đơn (ghi nhận trạng thái thanh toán thành công)
 app.post('/api/user/invoices/:id/pay', authMiddleware, requireVerifiedCustomer, async (req, res, next) => {
   try {
     const userId = getAppUserObjectId(req);
@@ -2740,6 +2835,7 @@ app.post('/api/user/invoices/:id/pay', authMiddleware, requireVerifiedCustomer, 
   } catch (e) { next(e); }
 });
 
+// Hồ sơ người dùng: lấy thông tin
 app.get('/api/user/profile', authMiddleware, requireVerifiedCustomer, async (req, res, next) => {
   try {
     const userId = getAppUserObjectId(req);
@@ -2750,6 +2846,7 @@ app.get('/api/user/profile', authMiddleware, requireVerifiedCustomer, async (req
   } catch (e) { next(e); }
 });
 
+// Cập nhật hồ sơ (tên, phone, gender, dob, main sport)
 app.put('/api/user/profile', authMiddleware, requireVerifiedCustomer, async (req, res, next) => {
   try {
     const userId = getAppUserObjectId(req);
@@ -2858,6 +2955,7 @@ app.put('/api/user/profile', authMiddleware, requireVerifiedCustomer, async (req
   } catch (e) { next(e); }
 });
 
+// Đổi mật khẩu cho tài khoản customer
 app.put('/api/user/password', authMiddleware, requireVerifiedCustomer, async (req, res, next) => {
   try {
     const userId = getAppUserObjectId(req);
@@ -2907,6 +3005,7 @@ app.put('/api/user/password', authMiddleware, requireVerifiedCustomer, async (re
 const MATCH_REQUEST_ALLOWED_VISIBILITIES = new Set(['public','friends','private']);
 const MATCH_REQUEST_ALLOWED_STATUSES = new Set(['open','matched','cancelled','expired']);
 
+// Tạo yêu cầu ghép trận (match request)
 app.post('/api/match_requests', authMiddleware, requireVerifiedCustomer, async (req, res, next) => {
   try {
     const userId = getAppUserObjectId(req);
@@ -3144,6 +3243,7 @@ app.post('/api/match_requests', authMiddleware, requireVerifiedCustomer, async (
   } catch (e) { next(e); }
 });
 
+// Danh sách match request (customer đã xác thực)
 app.get('/api/match_requests', authMiddleware, requireVerifiedCustomer, async (req, res, next) => {
   try {
     const userId = getAppUserObjectId(req);
@@ -3162,7 +3262,7 @@ app.get('/api/match_requests', authMiddleware, requireVerifiedCustomer, async (r
     if (sportId) {
       const candidates = buildIdCandidates(sportId);
       if (candidates.length) {
-        filter.sportId = { $in: candidates }; // $in with strings/oid is fine
+        filter.sportId = { $in: candidates }; // $in với chuỗi/ObjectId đều hợp lệ
       }
     }
 
@@ -3177,6 +3277,7 @@ app.get('/api/match_requests', authMiddleware, requireVerifiedCustomer, async (r
   } catch (e) { next(e); }
 });
 
+// Tham gia match request (join vào team/participant)
 app.put('/api/match_requests/:id/join', authMiddleware, requireVerifiedCustomer, async (req, res, next) => {
   try {
     const userId = getAppUserObjectId(req);
@@ -3451,6 +3552,7 @@ app.put('/api/match_requests/:id/join', authMiddleware, requireVerifiedCustomer,
   } catch (e) { next(e); }
 });
 
+// Huỷ match request
 app.put('/api/match_requests/:id/cancel', authMiddleware, requireVerifiedCustomer, async (req, res, next) => {
   try {
     const userId = getAppUserObjectId(req);
@@ -3555,6 +3657,7 @@ app.put('/api/match_requests/:id/cancel', authMiddleware, requireVerifiedCustome
   } catch (e) { next(e); }
 });
 
+// Khách xem danh sách thông báo của mình
 app.get('/api/user/notifications', authMiddleware, requireVerifiedCustomer, async (req, res, next) => {
   try {
     const customerId = getAppUserObjectId(req);
@@ -3573,6 +3676,7 @@ app.get('/api/user/notifications', authMiddleware, requireVerifiedCustomer, asyn
   } catch (e) { next(e); }
 });
 
+// Đánh dấu thông báo đã đọc
 app.post('/api/user/notifications/:id/read', authMiddleware, requireVerifiedCustomer, async (req, res, next) => {
   try {
     const customerId = getAppUserObjectId(req);
@@ -3591,6 +3695,7 @@ app.post('/api/user/notifications/:id/read', authMiddleware, requireVerifiedCust
   } catch (e) { next(e); }
 });
 
+// --- Staff: facility + court/maintenance quản lý ---
 app.get('/api/staff/facility', async (req, res, next) => {
   try {
     const staffUser = await fetchStaffUser(req);
@@ -3730,6 +3835,7 @@ app.put('/api/staff/facility', async (req, res, next) => {
   }
 });
 
+// Danh sách môn thể thao thuộc facility của staff
 app.get('/api/staff/sports', async (req, res, next) => {
   try {
     const staffUser = await fetchStaffUser(req);
@@ -3763,6 +3869,7 @@ app.get('/api/staff/sports', async (req, res, next) => {
   }
 });
 
+// Staff tạo môn thể thao mới
 app.post('/api/staff/sports', async (req, res, next) => {
   try {
     const staffUser = await fetchStaffUser(req);
@@ -3801,6 +3908,7 @@ app.post('/api/staff/sports', async (req, res, next) => {
   }
 });
 
+// Staff cập nhật môn thể thao
 app.put('/api/staff/sports/:id', async (req, res, next) => {
   try {
     const staffUser = await fetchStaffUser(req);
@@ -3856,6 +3964,7 @@ app.put('/api/staff/sports/:id', async (req, res, next) => {
   }
 });
 
+// Staff xoá (soft) môn thể thao
 app.delete('/api/staff/sports/:id', async (req, res, next) => {
   try {
     const staffUser = await fetchStaffUser(req);
@@ -3882,6 +3991,7 @@ app.delete('/api/staff/sports/:id', async (req, res, next) => {
   }
 });
 
+// Staff xem danh sách booking thuộc facility
 app.get('/api/staff/bookings', async (req, res, next) => {
   try {
     const staffUser = await fetchStaffUser(req);
@@ -3932,6 +4042,7 @@ app.get('/api/staff/bookings', async (req, res, next) => {
   }
 });
 
+// Nhân viên tạo booking hộ khách vãng lai (walk-in)
 app.post('/api/staff/bookings', async (req, res, next) => {
   try {
     const staffUser = await fetchStaffUser(req);
@@ -3971,6 +4082,10 @@ app.post('/api/staff/bookings', async (req, res, next) => {
         email: typeof customer.email === 'string' ? customer.email.trim().toLowerCase() : undefined,
         createdAt: new Date(),
       });
+      if (!doc.email) {
+        // Sinh email tạm để thỏa mãn unique index khi khách không cung cấp email
+        doc.email = `guest-${new ObjectId().toHexString()}@walkin.local`;
+      }
       const insertCustomer = await db.collection('users').insertOne(doc);
       customerId = insertCustomer.insertedId;
     }
@@ -4062,6 +4177,7 @@ app.post('/api/staff/bookings', async (req, res, next) => {
   }
 });
 
+// Staff cập nhật trạng thái booking (confirm/cancel...)
 app.patch('/api/staff/bookings/:id/status', async (req, res, next) => {
   try {
     const staffUser = await fetchStaffUser(req);
@@ -4161,6 +4277,7 @@ app.patch('/api/staff/bookings/:id/status', async (req, res, next) => {
   }
 });
 
+// Staff tạo lịch bảo trì sân
 app.post('/api/staff/courts/:id/maintenance', async (req, res, next) => {
   try {
     const staffUser = await fetchStaffUser(req);
@@ -4196,7 +4313,7 @@ app.post('/api/staff/courts/:id/maintenance', async (req, res, next) => {
       facilityId,
       start,
       end,
-      // Mongo schema requires reason; default to a generic label when none provided.
+      // Schema Mongo bắt buộc có lý do; nếu thiếu thì gắn nhãn mặc định
       reason: reasonRaw || 'Maintenance',
       status: 'scheduled',
       createdAt: new Date(),
@@ -4222,6 +4339,7 @@ app.post('/api/staff/courts/:id/maintenance', async (req, res, next) => {
   }
 });
 
+// Staff chỉnh sửa lịch bảo trì
 app.put('/api/staff/maintenance/:id', async (req, res, next) => {
   try {
     const staffUser = await fetchStaffUser(req);
@@ -4295,6 +4413,7 @@ app.put('/api/staff/maintenance/:id', async (req, res, next) => {
   }
 });
 
+// Staff thay đổi trạng thái bảo trì (start/complete/cancel)
 app.post('/api/staff/maintenance/:id/action', async (req, res, next) => {
   try {
     const staffUser = await fetchStaffUser(req);
@@ -4349,6 +4468,7 @@ app.post('/api/staff/maintenance/:id/action', async (req, res, next) => {
   }
 });
 
+// Staff xem danh sách hóa đơn của facility
 app.get('/api/staff/invoices', async (req, res, next) => {
   try {
     const staffUser = await fetchStaffUser(req);
@@ -4441,6 +4561,7 @@ app.get('/api/staff/invoices', async (req, res, next) => {
   }
 });
 
+// Nhân viên gửi nhắc thanh toán cho khách
 app.post('/api/staff/invoices/:id/remind', async (req, res, next) => {
   try {
     const staffUser = await fetchStaffUser(req);
@@ -4513,6 +4634,7 @@ app.post('/api/staff/invoices/:id/remind', async (req, res, next) => {
   }
 });
 
+// Staff cập nhật trạng thái hóa đơn (paid/void...)
 app.patch('/api/staff/invoices/:id/status', async (req, res, next) => {
   try {
     const staffUser = await fetchStaffUser(req);
@@ -4703,7 +4825,7 @@ app.patch('/api/staff/invoices/:id/status', async (req, res, next) => {
 });
 
 // =============================================================================
-// STAFF REPORTS - Analytics endpoints for "Báo cáo thống kê" dashboard
+// STAFF REPORTS - Các endpoint thống kê cho màn "Báo cáo thống kê"
 // =============================================================================
 
 const BOOKING_REVENUE_STATUSES = new Set(['confirmed', 'completed', 'matched', 'paid']);
@@ -4714,7 +4836,7 @@ function parseReportRange(req) {
   let to = coerceDateValue(req?.query?.to) ?? now;
   let from = coerceDateValue(req?.query?.from);
   if (!from) {
-    // Default to last 7 days
+    // Mặc định lấy 7 ngày gần nhất
     from = new Date(to.getTime() - 6 * 24 * 60 * 60 * 1000);
   }
   if (from > to) {
@@ -4726,11 +4848,11 @@ function parseReportRange(req) {
 }
 
 function resolveReportFacilityId(req, staffUser) {
-  // Staff must have a facilityId assigned
+  // Nhân viên bắt buộc phải được gán facilityId
   const staffFacilityId = coerceObjectId(staffUser?.facilityId);
   const queryFacilityId = coerceObjectId(req?.query?.facilityId);
 
-  // If query facilityId is provided, validate it matches the staff's assigned facility
+  // Nếu query có facilityId, kiểm tra phải trùng với facility được gán cho nhân viên
   if (queryFacilityId) {
     if (!staffFacilityId || !queryFacilityId.equals(staffFacilityId)) {
       return { error: { status: 403, message: 'Không có quyền truy cập cơ sở này' } };
@@ -4862,7 +4984,7 @@ app.get('/api/staff/reports/summary', async (req, res, next) => {
     const pendingBookingsCount = totals.pendingCount ?? 0;
     const confirmedBookingsCount = totals.confirmedCount ?? 0;
 
-    // Get invoice stats
+    // Lấy thống kê hóa đơn trong khoảng thời gian
     const invoicePipeline = [
       {
         $lookup: {
@@ -4901,7 +5023,7 @@ app.get('/api/staff/reports/summary', async (req, res, next) => {
       }
     }
 
-    // Cancellation analytics for summary
+    // Phân tích hủy để hiện KPI tóm tắt
     const cancelReasonLabels = {
       customer_cancel: 'Khách hàng hủy đặt sân',
       staff_cancel: 'Nhân viên hủy/không duyệt đặt sân',
@@ -4968,7 +5090,7 @@ app.get('/api/staff/reports/summary', async (req, res, next) => {
 
     const cancelledBookings = cancellationReport?.total?.[0]?.count ?? (totals.cancelledCount ?? 0);
 
-    // Add cancel rate per court
+    // Tính thêm tỷ lệ hủy theo từng sân
     const topCancelledCourts = (cancellationReport?.topCancelledCourts ?? []).map((court) => {
       const courtTotalBookings = report?.topCourts?.find((c) => c.courtId === court.courtId)?.bookingsCount ?? court.cancelledCount;
       const courtCancelRate = courtTotalBookings > 0 ? court.cancelledCount / courtTotalBookings : 0;
@@ -4981,7 +5103,7 @@ app.get('/api/staff/reports/summary', async (req, res, next) => {
       count: item.count ?? 0,
     }));
 
-    // Get active courts (non-cancelled bookings with revenue)
+    // Lọc top sân đang hoạt động (booking có doanh thu, không bị hủy)
     const topActiveCourts = (report?.topCourts ?? []).slice(0, 5).map((court) => ({
       courtId: court.courtId,
       courtName: court.courtName,
@@ -5160,7 +5282,7 @@ app.get('/api/staff/reports/top-courts', async (req, res, next) => {
   }
 });
 
-// Cancellations analytics endpoint
+// Endpoint thống kê hủy booking/match request
 app.get('/api/staff/reports/cancellations', async (req, res, next) => {
   try {
     const staffUser = await fetchStaffUser(req);
@@ -5171,7 +5293,7 @@ app.get('/api/staff/reports/cancellations', async (req, res, next) => {
 
     const { from, to } = parseReportRange(req);
 
-    // Cancellation reason code labels (Vietnamese)
+    // Nhãn lý do hủy (tiếng Việt)
     const cancelReasonLabels = {
       customer_cancel: 'Khách hàng hủy đặt sân',
       staff_cancel: 'Nhân viên hủy/không duyệt đặt sân',
@@ -5185,7 +5307,7 @@ app.get('/api/staff/reports/cancellations', async (req, res, next) => {
       unknown: 'Không rõ',
     };
 
-    // Aggregate bookings cancellations
+    // Gom/đếm các booking bị hủy theo nhiều nhóm
     const bookingsCancelAgg = await db.collection('bookings').aggregate([
       {
         $match: {
@@ -5247,7 +5369,7 @@ app.get('/api/staff/reports/cancellations', async (req, res, next) => {
     const bookingsReport = bookingsCancelAgg[0] ?? {};
     const cancelledBookings = bookingsReport.total?.[0]?.count ?? 0;
 
-    // Get total bookings for cancel rate calculation per court
+    // Tính tổng số booking mỗi sân để lấy tỷ lệ hủy
     const totalBookingsPerCourt = await db.collection('bookings').aggregate([
       {
         $match: {
@@ -5265,7 +5387,7 @@ app.get('/api/staff/reports/cancellations', async (req, res, next) => {
     ]).toArray();
     const totalBookingsMap = new Map(totalBookingsPerCourt.map((d) => [d._id?.toHexString?.() ?? String(d._id), d.totalBookings]));
 
-    // Aggregate match requests cancellations
+    // Gom/đếm các match request bị hủy
     const matchRequestsCancelAgg = await db.collection('match_requests').aggregate([
       {
         $match: {
@@ -5287,20 +5409,20 @@ app.get('/api/staff/reports/cancellations', async (req, res, next) => {
 
     const cancelledMatchRequests = matchRequestsCancelAgg[0]?.count ?? 0;
 
-    // Format byRole
+    // Chuẩn hóa nhóm theo vai trò hủy
     const byRole = (bookingsReport.byRole ?? []).map((item) => ({
       role: item.role || 'unknown',
       count: item.count ?? 0,
     }));
 
-    // Format byReason with Vietnamese labels
+    // Chuẩn hóa nhóm theo lý do (đã gắn nhãn tiếng Việt)
     const byReason = (bookingsReport.byReason ?? []).map((item) => ({
       code: item.code || 'unknown',
       text: cancelReasonLabels[item.code] ?? cancelReasonLabels.unknown,
       count: item.count ?? 0,
     }));
 
-    // Format byCourt with cancel rates
+    // Chuẩn hóa nhóm theo sân, kèm tổng booking và tỷ lệ hủy
     const byCourt = (bookingsReport.byCourt ?? []).map((item) => {
       const courtKey = item.courtId;
       const totalBookings = totalBookingsMap.get(courtKey) ?? item.cancelledCount;
@@ -5379,7 +5501,7 @@ app.put('/api/staff/profile', async (req, res, next) => {
       { returnDocument: ReturnDocument.AFTER },
     );
 
-    // Fallback for legacy accounts missing role flag
+    // Dự phòng cho tài khoản cũ thiếu cờ role
     if (!result.value) {
       result = await db.collection('users').findOneAndUpdate(
         { _id: staffUser._id, status: { $ne: 'deleted' } },
@@ -5671,7 +5793,7 @@ app.post('/api/staff/notifications/mark-all-read', async (req, res, next) => {
 });
 
 // --- Admin Bookings ---
-// List bookings with optional filters
+// Liệt kê danh sách booking (admin) với nhiều bộ lọc tuỳ chọn
 app.get('/api/admin/bookings', async (req, res, next) => {
   try {
     const { facilityId, courtId, sportId, userId, status, from, to, includeDeleted } = req.query || {};
@@ -5691,7 +5813,7 @@ app.get('/api/admin/bookings', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Update a booking (recompute price, check conflicts)
+// Cập nhật booking (admin) + tính lại giá và kiểm tra trùng giờ
 app.put('/api/admin/bookings/:id', async (req, res, next) => {
   try {
     const idParam = String(req.params.id);
@@ -5701,7 +5823,7 @@ app.put('/api/admin/bookings/:id', async (req, res, next) => {
     const current = await db.collection('bookings').findOne(filter);
     if (!current) return res.status(404).json({ error: 'Not found' });
 
-    // Prepare next state
+    // Chuẩn bị state mới để cập nhật
     const next = { ...current };
     const body = req.body || {};
     if (body.customerId) next.customerId = new ObjectId(String(body.customerId));
@@ -5730,10 +5852,10 @@ app.put('/api/admin/bookings/:id', async (req, res, next) => {
     if (body.start) next.start = new Date(String(body.start));
     if (body.end) next.end = new Date(String(body.end));
 
-    // Validate timeframe
+    // Kiểm tra khung thời gian hợp lệ
     if (!(next.start < next.end)) return res.status(400).json({ error: 'start must be < end' });
 
-    // Conflict check (ignore this booking itself)
+    // Kiểm tra trùng lịch (bỏ qua chính booking hiện tại)
     const overlapExpr = { $or: [ { start: { $lt: next.end }, end: { $gt: next.start } } ] };
     const conflict = await db.collection('bookings').findOne({
       _id: { $ne: current._id },
@@ -5747,7 +5869,7 @@ app.put('/api/admin/bookings/:id', async (req, res, next) => {
     });
     if (conflict || maintenance) return res.status(409).json({ error: 'Court not available for the requested time' });
 
-    // Recompute price
+    // Tính lại giá
     const user = await db.collection('users').findOne({ _id: next.customerId });
     const quote = await quotePrice({ db, facilityId: String(next.facilityId), sportId: String(next.sportId), courtId: String(next.courtId), start: next.start, end: next.end, currency: next.currency || 'VND', user });
 
@@ -5792,7 +5914,7 @@ app.put('/api/admin/bookings/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Delete (soft delete) a booking
+// Xoá mềm booking (đặt trạng thái cancelled + lưu dấu thời gian)
 app.delete('/api/admin/bookings/:id', async (req, res, next) => {
   try {
     const idParam = String(req.params.id);
@@ -5821,8 +5943,8 @@ app.delete('/api/admin/bookings/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// --- Admin APIs (no auth for demo; protect in production) ---
-// SPORTS CRUD
+// --- Admin APIs (demo chưa bật auth; cần bảo vệ khi lên môi trường thật) ---
+// Thao tác CRUD môn thể thao (sports)
 app.get('/api/admin/sports', async (req, res, next) => {
   try {
     const includeInactive = req.query.includeInactive === 'true';
@@ -5889,7 +6011,7 @@ app.delete('/api/admin/sports/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// COURTS management
+// Quản lý sân (court) cho admin
 app.get('/api/admin/facilities/:id/courts', async (req, res, next) => {
   try {
     const facilityId = new ObjectId(req.params.id);
@@ -6216,7 +6338,7 @@ app.patch('/api/admin/courts/:id/status', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Soft delete court (mark status='deleted')
+// Xoá mềm sân (status='deleted')
 app.delete('/api/admin/courts/:id', async (req, res, next) => {
   try {
     const idParam = String(req.params.id);
@@ -6224,7 +6346,7 @@ app.delete('/api/admin/courts/:id', async (req, res, next) => {
     if (ObjectId.isValid(idParam)) candidates.push({ _id: new ObjectId(idParam) });
     candidates.push({ _id: idParam });
 
-    // Try sequentially to improve diagnosability across legacy IDs
+    // Thử tuần tự để dễ chẩn đoán với các ID legacy khác nhau
     for (const f of candidates) {
       const r = await db.collection('courts').findOneAndUpdate(
         f,
@@ -6246,7 +6368,7 @@ app.delete('/api/admin/courts/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// PRICE PROFILES
+// Quản lý bảng giá (price profiles) cho admin
 app.get('/api/admin/price-profiles', async (req, res, next) => {
   try {
     const { facilityId, sportId, courtId } = req.query;
@@ -6313,7 +6435,7 @@ app.get('/api/staff/price-profiles', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// FACILITIES management (minimal)
+// Quản lý cơ sở (facility) ở mức tối thiểu cho admin
 app.get('/api/admin/facilities', async (req, res, next) => {
   try {
     const includeInactive = req.query.includeInactive === 'true';
@@ -6329,12 +6451,12 @@ app.post('/api/admin/facilities', async (req, res, next) => {
     if (!name) return res.status(400).json({ error: 'name required' });
     const doc = { name, timeZone, active, address: {} };
     if (address && typeof address === 'object') {
-      // Whitelist simple string fields for address
+      // Chỉ chấp nhận các trường địa chỉ dạng chuỗi đơn giản
       const safe = {};
       for (const k of ['line1','ward','district','city','province','country','postalCode']) {
         if (address[k] !== undefined) safe[k] = String(address[k]);
       }
-      // Optional coordinates if provided
+      // Tọa độ tùy chọn nếu client gửi kèm
       if (address.lat !== undefined) safe.lat = Number(address.lat);
       if (address.lng !== undefined) safe.lng = Number(address.lng);
       doc.address = safe;
@@ -6351,7 +6473,7 @@ app.post('/api/admin/facilities', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Update facility
+// Cập nhật facility: whitelist các trường name/timeZone/active và address (line1/ward/district/city/province/country/postalCode + lat/lng)
 app.put('/api/admin/facilities/:id', async (req, res, next) => {
   try {
     const idParam = String(req.params.id);
@@ -6390,6 +6512,7 @@ app.put('/api/admin/facilities/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Admin tạo bảng giá mới (tùy chọn gắn cơ sở/môn/sân)
 app.post('/api/admin/price-profiles', async (req, res, next) => {
   try {
     const body = req.body || {};
@@ -6411,6 +6534,7 @@ app.post('/api/admin/price-profiles', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Admin cập nhật bảng giá theo id
 app.put('/api/admin/price-profiles/:id', async (req, res, next) => {
   try {
     const idParam = String(req.params.id);
@@ -6434,19 +6558,21 @@ app.put('/api/admin/price-profiles/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Admin upsert bảng giá theo bộ key (facilityId + sportId + courtId)
+// - Chuẩn hóa rule, ép kiểu số/double, làm sạch field
 app.post('/api/admin/price-profiles/upsert', async (req, res, next) => {
   try {
     const body = req.body || {};
     console.log('[upsert] Received body:', JSON.stringify(body, null, 2));
     
-    // Build key for upsert (ObjectIds)
+    // Xây key upsert (dùng ObjectId)
     const key = {};
     if (body.facilityId) key.facilityId = new ObjectId(body.facilityId);
     if (body.sportId) key.sportId = new ObjectId(body.sportId);
     if (body.courtId) key.courtId = new ObjectId(body.courtId);
     console.log('[upsert] Key:', key);
 
-    // Sanitize rules
+    // Làm sạch danh sách rule
     const sanitizeRule = (r) => {
       const rr = { ...r };
       if (Array.isArray(rr.daysOfWeek)) {
@@ -6459,24 +6585,24 @@ app.post('/api/admin/price-profiles/upsert', async (req, res, next) => {
       return rr;
     };
 
-    // Build sanitized doc for $set – only include defined fields
+    // Xây doc đã làm sạch cho $set – chỉ giữ field có giá trị
     const baseRate = parseFloat(body.baseRatePerHour ?? 0);
     const doc = {
       currency: typeof body.currency === 'string' ? body.currency : 'VND',
-      // Force BSON double by adding epsilon to integers (MongoDB driver serializes whole numbers as int)
+      // Ép kiểu double cho BSON bằng epsilon nhỏ (driver MongoDB dễ serialize số nguyên thành int)
       baseRatePerHour: baseRate + (baseRate === Math.floor(baseRate) ? 0.000001 : 0),
       rules: Array.isArray(body.rules) ? body.rules.map(sanitizeRule) : [],
       updatedAt: new Date(),
     };
-    // Add optional ObjectIds only if they exist in key (MUST be ObjectId, not string)
+    // Chỉ thêm các ObjectId tùy chọn khi tồn tại trong key (bắt buộc là ObjectId, không phải string)
     if (key.facilityId) doc.facilityId = key.facilityId;
     if (key.sportId) doc.sportId = key.sportId;
     if (key.courtId) doc.courtId = key.courtId;
-    // taxPercent must be 0-100 (user enters %, not basis points) AND must be double (not int)
+    // taxPercent phải trong 0-100 (người dùng nhập %) và phải là double (không phải int)
     if (body.taxPercent !== undefined) {
       const tax = parseFloat(body.taxPercent);
       const clamped = Math.max(0, Math.min(100, tax));
-      // Force BSON double type by adding tiny epsilon (MongoDB driver serializes integers as int32/int64)
+      // Ép kiểu double BSON bằng epsilon nhỏ (driver MongoDB serialize số nguyên thành int32/int64)
       doc.taxPercent = clamped + (clamped === Math.floor(clamped) ? 0.000001 : 0);
       console.log('[upsert] taxPercent conversion:', { input: body.taxPercent, parsed: tax, clamped, final: doc.taxPercent, type: typeof doc.taxPercent });
     }
@@ -6501,7 +6627,7 @@ app.post('/api/admin/price-profiles/upsert', async (req, res, next) => {
     res.json(updated);
   } catch (e) {
     console.error('[upsert] Error:', e);
-    // If it's a MongoDB validation error, log the detailed schema violations
+    // Nếu lỗi validation MongoDB, log chi tiết rule vi phạm
     if (e.code === 121 && e.errInfo?.details?.schemaRulesNotSatisfied) {
       console.error('[upsert] Schema validation details:', JSON.stringify(e.errInfo.details.schemaRulesNotSatisfied, null, 2));
     }
@@ -6509,6 +6635,7 @@ app.post('/api/admin/price-profiles/upsert', async (req, res, next) => {
   }
 });
 
+// Staff upsert bảng giá trong phạm vi cơ sở của mình
 app.post('/api/staff/price-profiles/upsert', async (req, res, next) => {
   try {
     const staffUser = await fetchStaffUser(req);
@@ -6606,6 +6733,7 @@ app.post('/api/staff/price-profiles/upsert', async (req, res, next) => {
   }
 });
 
+// Admin xem audit log (lọc action/resource/actor, giới hạn số bản ghi)
 app.get('/api/admin/audit-logs', async (req, res, next) => {
   try {
     const { action, resource, actorId, limit, since, until } = req.query || {};
@@ -6633,8 +6761,8 @@ app.get('/api/admin/audit-logs', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// ADMIN: create user (admin/staff/customer) – admin only
-// USERS (admin)
+// ADMIN: CRUD user (admin/staff/customer) – chỉ admin
+// Liệt kê user với bộ lọc role/status và tìm kiếm email/phone/name
 app.get('/api/admin/users', async (req, res, next) => {
   try {
     const { role, status, q } = req.query || {};
@@ -6654,6 +6782,7 @@ app.get('/api/admin/users', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Tạo user mới (admin/staff/customer), validate role/facility/gender và băm mật khẩu
 app.post('/api/admin/users', async (req, res, next) => {
   try {
     const {
@@ -6740,6 +6869,7 @@ app.post('/api/admin/users', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Cập nhật user theo id (role/status/password/gender/dob/mainSport) + ghi audit
 app.put('/api/admin/users/:id', async (req, res, next) => {
   try {
     const idParam = String(req.params.id);
@@ -6869,6 +6999,7 @@ app.put('/api/admin/users/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Xoá user (delete.hard) với nhiều biến thể _id/regex; log debug + audit
 app.delete('/api/admin/users/:id', async (req, res, next) => {
   try {
     const idParam = String(req.params.id);
@@ -6962,8 +7093,13 @@ const PORT = process.env.PORT || 3000;
 
 connectMongo()
   .then(() => {
+    // Chạy job nền: tự hủy booking pending quá hạn
+    setInterval(autoCancelStaleBookings, AUTO_CANCEL_SWEEP_INTERVAL_MS);
+    // Quét lần đầu ngay khi khởi động để dọn booking pending cũ
+    autoCancelStaleBookings();
+
     app.listen(PORT, '0.0.0.0', () => {
-      // Bind to 0.0.0.0 so cloud hosts (Render, etc.) can reach the process.
+      // Bind 0.0.0.0 để host đám mây (Render, v.v.) có thể truy cập tiến trình
       console.log(`Server is running on port ${PORT}`);
     });
   })

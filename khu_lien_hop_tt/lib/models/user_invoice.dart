@@ -1,5 +1,6 @@
 import '../utils/json_utils.dart';
 
+// Hoá đơn hiển thị cho khách: số tiền, trạng thái, mô tả và thông tin sân
 class UserInvoice {
   final String id;
   final double amount;

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 enum SportsBackgroundVariant { primary, staff, customer }
 
 class SportsGradientBackground extends StatelessWidget {
+  // Nền gradient/brutalist cho các màn theo vai trò (primary/staff/customer)
   const SportsGradientBackground({
     super.key,
     required this.child,

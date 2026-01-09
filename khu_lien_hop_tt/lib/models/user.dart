@@ -1,5 +1,6 @@
 import '../utils/json_utils.dart';
 
+// Người dùng hệ thống: admin/staff/customer kèm thông tin bổ sung
 class AppUser {
   final String id;
   final String email;
